@@ -5,8 +5,6 @@ import { watch, ref } from "vue";
 import axios from "axios";
 import InputError from "@/Components/InputError.vue";
 
-console.log('create vue amv');
-
 defineProps({
     classes: {
         type: Object,
