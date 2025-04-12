@@ -38,6 +38,7 @@ console.log('AuthenticatedLayout');
                                 >
                                     Dashboard
                                 </NavLink>
+                                
                                 <NavLink
                                     :href="route('students.index')"
                                     :active="

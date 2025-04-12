@@ -17,6 +17,9 @@ import { Head, Link } from '@inertiajs/vue3';
                 >
                     Dashboard
                 </Link>
+
+              
+                
                 <template v-else>
                     <Link
                         :href="route('login')"
