@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
+use App\Http\Resources\UserResource;
+use Illuminate\Database\Eloquent\Builder;
+use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
@@ -11,13 +16,13 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $userQuery = User::search($request);
-        $classes = ClassResource::collection(Classes::all());
+        //$classes = ClassResource::collection(Classes::all());
 
-        return inertia('Student/Index', [
-            'students' => StudentResource::collection(
-                $studentQuery->paginate(5)
+        return inertia('User/Index', [
+            'users' => UserResource::collection(
+                $userQuery->paginate(5)
             ),
-            'classes' => $classes,
+            //s'classes' => $classes,
             'search' => request('search') ?? ''
         ]);
     }
@@ -33,30 +38,25 @@ class UserController extends Controller
     {
         $classes = ClassResource::collection(Classes::all());
 
-        return inertia('Student/Create', [
+        return inertia('User/Create', [
             'classes' => $classes
         ]);
     }
 
-    public function store(StoreStudentRequest $request)
+    public function store(StoreUserRequest $request)
     {
-        Student::create($request->validated());
+        User::create($request->validated());
 
-        return redirect()->route('students.index');
+        return redirect()->route('users.index');
     }
 
     public function edit(User $user)
     {
-        $student = Student::find($user->id);
-        if (!$student) {
-            return redirect()->route('users.index')->with('error', 'User not found');
-        }
-    {
-        $classes = ClassResource::collection(Classes::all());
+        //$classes = ClassResource::collection(Classes::all());
 
-        return inertia('Student/Edit', [
-            'student' => StudentResource::make($student),
-            'classes' => $classes
+        return inertia('User/Edit', [
+            'user' => UserResource::make($user),
+            //'classes' => $classes
         ]);
     }
 
