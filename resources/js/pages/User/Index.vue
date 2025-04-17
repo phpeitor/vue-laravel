@@ -73,11 +73,11 @@ const deleteUser = (id) => {
     <Head title="Users" />
 
     <AuthenticatedLayout>
-        <template #header>
+        <!--<template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                 Users
             </h2>
-        </template>
+        </template>-->
         <div class="bg-gray-100 py-10">
             <div class="mx-auto max-w-7xl">
                 <div class="px-4 sm:px-6 lg:px-8">
@@ -154,6 +154,13 @@ const deleteUser = (id) => {
                                                 >
                                                     Email
                                                 </th>
+
+                                                <th
+                                                    scope="col"
+                                                    class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6"
+                                                >
+                                                    Password
+                                                </th>
                                                 
                                                 <th
                                                     scope="col"
@@ -188,6 +195,11 @@ const deleteUser = (id) => {
                                                     class="whitespace-nowrap px-3 py-4 text-sm text-gray-500"
                                                 >
                                                     {{ user.email }}
+                                                </td>
+                                                <td
+                                                    class="whitespace-nowrap px-3 py-4 text-sm text-gray-500"
+                                                >
+                                                    {{ user.password }}
                                                 </td>
                                               
                                                 <td
