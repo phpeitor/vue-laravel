@@ -16,13 +16,11 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $userQuery = User::search($request);
-        //$classes = ClassResource::collection(Classes::all());
 
         return inertia('User/Index', [
             'users' => UserResource::collection(
                 $userQuery->paginate(5)
             ),
-            //s'classes' => $classes,
             'search' => request('search') ?? ''
         ]);
     }
@@ -36,10 +34,9 @@ class UserController extends Controller
 
     public function create()
     {
-        $classes = ClassResource::collection(Classes::all());
-
+       
         return inertia('User/Create', [
-            'classes' => $classes
+            //
         ]);
     }
 
@@ -52,11 +49,8 @@ class UserController extends Controller
 
     public function edit(User $user)
     {
-        //$classes = ClassResource::collection(Classes::all());
-
         return inertia('User/Edit', [
             'user' => UserResource::make($user),
-            //'classes' => $classes
         ]);
     }
 
