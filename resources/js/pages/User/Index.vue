@@ -18,8 +18,7 @@ onMounted(() => {
 });
 
 let pageNumber = ref(1),
-    searchTerm = ref(usePage().props.search ?? ""),
-    class_id = ref(usePage().props.class_id ?? "");
+    searchTerm = ref(usePage().props.search ?? "");
 
 const pageNumberUpdated = (link) => {
     pageNumber.value = link.url.split("=")[1];
@@ -190,6 +189,13 @@ const deleteUser = (id) => {
                                                     class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6"
                                                 >
                                                     {{ user.name }}
+
+                                                    <span
+                                                        class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                                        :class="user.estado == 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                                    >
+                                                        {{ user.estado == 1 ? 'Activo' : 'Inactivo' }}
+                                                    </span>
                                                 </td>
                                                 <td
                                                     class="whitespace-nowrap px-3 py-4 text-sm text-gray-500"
@@ -224,12 +230,11 @@ const deleteUser = (id) => {
                                                     >
                                                         Edit
                                                     </Link>
+                                                   
+
                                                     <button
-                                                        @click="
-                                                            deleteUser(
-                                                                user.id
-                                                            )
-                                                        "
+                                                        v-if="user.estado == 1"
+                                                        @click="deleteUser(user.id)"
                                                         class="ml-2 text-indigo-600 hover:text-indigo-900"
                                                     >
                                                         Delete

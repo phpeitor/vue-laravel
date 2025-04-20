@@ -20,6 +20,7 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'email_verified_at' => $this->email_verified_at,
             'password' => $this->password,
+            'estado' => $this->estado,
             'created_at_formatted' => optional($this->created_at)->toFormattedDateString(),
             'updated_at_formatted' => optional($this->createdupdated_at_at)->toFormattedDateString(),
         ];
