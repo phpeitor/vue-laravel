@@ -9,6 +9,8 @@ interface Props {
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
+
+console.log('global');
 </script>
 
 <template>
