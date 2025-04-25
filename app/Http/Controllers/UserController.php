@@ -63,7 +63,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        $user->update(['estado' => 0]);
+         $user->update(['estado' => 0]);
 
         return redirect()->route('users.index');
     }

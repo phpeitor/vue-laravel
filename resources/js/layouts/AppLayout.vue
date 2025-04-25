@@ -10,7 +10,19 @@ withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
 
-console.log('global');
+
+import { onMounted } from 'vue';
+
+onMounted(() => {
+
+    console.log('AppLayout mounted');
+    window.Echo.channel('online-users')
+        .listen('.UserLoggedIn', (e: any) => {
+            alert(`${e.user.name} está en línea`);
+        });
+});
+
+
 </script>
 
 <template>

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Events\UserLoggedIn; 
 
 class AuthenticatedSessionController extends Controller
 {
@@ -32,6 +33,8 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
 
         $request->session()->regenerate();
+
+        event(new UserLoggedIn(auth()->user())); 
 
         return redirect()->intended(route('dashboard', absolute: false));
     }
