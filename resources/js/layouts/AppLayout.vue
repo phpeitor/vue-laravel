@@ -12,13 +12,22 @@ withDefaults(defineProps<Props>(), {
 
 
 import { onMounted } from 'vue';
+import { useToast } from '@/components/ui/toast/use-toast';
+import { Toaster } from '@/components/ui/toast';
+
+const { toast } = useToast();
 
 onMounted(() => {
 
-    console.log('AppLayout mounted');
+    //console.log('AppLayout mounted');
     window.Echo.channel('online-users')
         .listen('.UserLoggedIn', (e: any) => {
-            alert(`${e.user.name} está en línea`);
+            //alert(`${e.user.name} está en línea`);
+            toast({
+                    title: 'Usuario en línea',
+                    description: `${e.user.name}`,
+                    variant: 'success',
+                });
         });
 });
 
@@ -27,6 +36,7 @@ onMounted(() => {
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbs">
+        <Toaster />
         <slot />
     </AppLayout>
 </template>
