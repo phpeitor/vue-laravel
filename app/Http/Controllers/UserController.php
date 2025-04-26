@@ -12,6 +12,11 @@ use App\Http\Requests\UpdateUserRequest;
 class UserController extends Controller
 {
     
+    public function __construct()
+    {
+        $this->middleware('role:admin')->only(['create', 'store', 'edit', 'update', 'destroy']);
+        $this->middleware('permission:ver usuarios')->only(['index', 'show']);
+    }
 
     public function index(Request $request)
     {
