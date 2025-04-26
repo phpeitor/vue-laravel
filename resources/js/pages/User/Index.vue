@@ -13,8 +13,11 @@ const props = defineProps({
 
 });
 
+const flashMessage = ref('');
+
 onMounted(() => {
-    console.log("Usuarios:", props.users.data);
+    flashMessage.value = usePage().props.flash?.success || '';
+    //console.log("Usuarios:", props.users.data);
 });
 
 let pageNumber = ref(1),
@@ -74,12 +77,14 @@ const deleteUser = (id) => {
     <AuthenticatedLayout>
         <!--<template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Users
+                
             </h2>
         </template>-->
         <div class="bg-gray-100 py-10">
             <div class="mx-auto max-w-7xl">
                 <div class="px-4 sm:px-6 lg:px-8">
+
+
                     <div class="sm:flex sm:items-center">
                         <div class="sm:flex-auto">
                             <h1 class="text-xl font-semibold text-gray-900">

@@ -26,6 +26,7 @@ class UpdateUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $this->user->id],
             'password' => ['required', 'string', 'min:8'],
             'estado' => ['required', 'boolean'], 
+            'role' => 'required|string|exists:roles,name',
         ];
     }
 
@@ -36,6 +37,7 @@ class UpdateUserRequest extends FormRequest
             'email' => 'email',
             'password' => 'password',
             'estado' => 'estado',
+            'role' => 'role',
         ];
     }
 }
