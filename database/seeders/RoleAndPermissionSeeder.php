@@ -15,16 +15,17 @@ class RoleAndPermissionSeeder extends Seeder
     public function run(): void
     {
         // Crear permisos
-        Permission::create(['name' => 'ver usuarios']);
-        Permission::create(['name' => 'editar usuarios']);
-        Permission::create(['name' => 'eliminar usuarios']);
+        Permission::create(['name' => 'users']);
+        Permission::create(['name' => 'edit user']);
+        Permission::create(['name' => 'delete user']);
+        Permission::create(['name' => 'add user']);
 
         // Crear roles
         $admin = Role::create(['name' => 'admin']);
         $user = Role::create(['name' => 'user']);
 
         // Asignar permisos a roles
-        $admin->givePermissionTo(['ver usuarios', 'editar usuarios', 'eliminar usuarios']);
-        $user->givePermissionTo(['ver usuarios']);
+        $admin->givePermissionTo(['users', 'delete user', 'edit user', 'add user']);
+        $user->givePermissionTo(['users']);
     }
 }

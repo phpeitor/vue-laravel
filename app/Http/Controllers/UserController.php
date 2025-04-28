@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use Spatie\Permission\Models\Role; 
+use Illuminate\Support\Facades\Gate;
+use Spatie\Permission\Models\Permission;
 
 class UserController extends Controller
 {
@@ -35,6 +37,10 @@ class UserController extends Controller
     public function create()
     {
        
+        if (!auth()->user()->hasPermissionTo('add user')) {
+            return redirect()->route('error.403'); 
+        }
+
         return inertia('User/Create', [
             'roles' => Role::pluck('name')
         ]);
@@ -42,11 +48,14 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request)
     {
+
+        if (!auth()->user()->can('add user')) {
+            abort(403, 'User does not have the right permissions');
+        }
+
         $user = User::create($request->validated());
 
-        //if ($request->has('role')) {
-            $user->assignRole($request->role); 
-        //}
+        $user->assignRole($request->role); 
 
         return redirect()->route('users.index');
     }
@@ -64,9 +73,6 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user)
     {
-        //$user->update($request->validated());
-
-        //return redirect()->route('users.index');
 
         $validated = $request->validated();
 
@@ -83,7 +89,7 @@ class UserController extends Controller
         $user->syncRoles([$validated['role']]);
         
         return redirect()->route('users.index')
-        ->with('success', 'Usuario actualizado correctamente.');
+        ->with('success', $user->name . ' actualizado correctamente');
     }
 
     public function destroy(User $user)

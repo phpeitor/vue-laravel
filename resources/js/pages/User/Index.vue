@@ -4,6 +4,9 @@ import Pagination from "@/Components/Pagination.vue";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/vue3";
 import { onMounted, ref, watch, computed } from "vue";
+import useAuth from "@/Composables/useAuth";
+
+const { hasPermission } = useAuth();
 
 const props = defineProps({
 
@@ -17,6 +20,13 @@ const flashMessage = ref('');
 
 onMounted(() => {
     flashMessage.value = usePage().props.flash?.success || '';
+
+    if (flashMessage.value) {
+        setTimeout(() => {
+            flashMessage.value = '';
+        }, 3000); 
+    }
+
     //console.log("Usuarios:", props.users.data);
 });
 
@@ -71,6 +81,18 @@ const deleteUser = (id) => {
 
 </script>
 
+<style scoped>
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+.fade-enter-to, .fade-leave-from {
+  opacity: 1;
+}
+</style>
+
 <template>
     <Head title="Users" />
 
@@ -96,6 +118,16 @@ const deleteUser = (id) => {
                         </div>
 
                         <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                            <transition name="fade">
+                                <div v-if="flashMessage" class="bg-green-100 text-green-800 text-sm p-2 rounded-md mb-2 transition">
+                                    <span class="mr-2">🙎‍♂️</span>
+                                    <span>{{ flashMessage }}</span>
+                                    <button @click="flashMessage = ''" class="ml-2 text-green-600 hover:text-green-800">ㄨ</button> 
+                                </div>
+                            </transition>
+                        </div>
+                       
+                        <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none" v-if="hasPermission('add user')">
                             <Link
                                 :href="route('users.create')"
                                 class="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
@@ -225,6 +257,7 @@ const deleteUser = (id) => {
                                                     class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6"
                                                 >
                                                     <Link
+                                                        v-if="hasPermission('edit user')"
                                                         :href="
                                                             route(
                                                                 'users.edit',
@@ -238,7 +271,7 @@ const deleteUser = (id) => {
                                                    
 
                                                     <button
-                                                        v-if="user.estado == 1"
+                                                        v-if="user.estado == 1 && hasPermission('delete user')"
                                                         @click="deleteUser(user.id)"
                                                         class="ml-2 text-indigo-600 hover:text-indigo-900"
                                                     >
