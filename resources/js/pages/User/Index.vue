@@ -1,7 +1,7 @@
 <script setup>
-import MagnifyingGlass from "@/Components/Icons/MagnifyingGlass.vue";
-import Pagination from "@/Components/Pagination.vue";
-import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
+import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
+import Pagination from "@/components/Pagination.vue";
+import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/vue3";
 import { onMounted, ref, watch, computed } from "vue";
 import useAuth from "@/Composables/useAuth";

@@ -1,9 +1,9 @@
 <script setup>
-import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
+import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import { watch, ref } from "vue";
 import axios from "axios";
-import InputError from "@/Components/InputError.vue";
+import InputError from "@/components/InputError.vue";
 
 defineProps({
     classes: {
