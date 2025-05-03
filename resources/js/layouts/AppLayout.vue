@@ -1,4 +1,10 @@
 <script setup lang="ts">
+
+declare global {
+    interface Window {
+        Echo: any;
+    }
+}
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItemType } from '@/types';
 
