@@ -20,7 +20,11 @@ const sidebarNavItems: NavItem[] = [
     },
 ];
 
-const page = usePage();
+interface ZiggyProps {
+    location?: string;
+}
+
+const page = usePage<{ ziggy?: ZiggyProps }>();
 
 const currentPath = page.props.ziggy?.location ? new URL(page.props.ziggy.location).pathname : '';
 </script>

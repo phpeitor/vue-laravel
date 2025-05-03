@@ -24,11 +24,9 @@ import { Toaster } from '@/components/ui/toast';
 const { toast } = useToast();
 
 onMounted(() => {
-
     //console.log('AppLayout mounted');
     window.Echo.channel('online-users')
         .listen('.UserLoggedIn', (e: any) => {
-            //alert(`${e.user.name} está en línea`);
             toast({
                     title: 'Usuario en línea',
                     description: `${e.user.name}`,
@@ -36,8 +34,6 @@ onMounted(() => {
                 });
         });
 });
-
-
 </script>
 
 <template>

@@ -7,16 +7,22 @@ import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, Users, Notebook  } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
+import useAuth from '@/Composables/useAuth';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/dashboard',
-        icon: LayoutGrid,
-    },
-    { title: 'Students', href: '/students', icon: Notebook  },
-    { title: 'Users', href: '/users', icon: Users  },
+const { hasPermission } = useAuth();
+
+const allNavItems: NavItem[] = [
+    { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+    { title: 'Students', href: '/students', icon: Notebook },
+    { title: 'Users', href: '/users', icon: Users },
 ];
+
+const mainNavItems = allNavItems.filter(item => {
+    if (item.title === 'Users') {
+        return hasPermission('add user');
+    }
+    return true;
+});
 
 const footerNavItems: NavItem[] = [
     {
