@@ -6,7 +6,9 @@ import DropdownLink from "@/components/DropdownLink.vue";
 import NavLink from "@/components/NavLink.vue";
 import ResponsiveNavLink from "@/components/ResponsiveNavLink.vue";
 import { Link } from "@inertiajs/vue3";
+import useAuth from "@/Composables/useAuth";
 
+const { hasPermission } = useAuth();
 const showingNavigationDropdown = ref(false);
 
 </script>
@@ -48,6 +50,14 @@ const showingNavigationDropdown = ref(false);
                                     "
                                 >
                                     Students
+                                </NavLink>
+
+                                <NavLink
+                                    :href="route('users.index')"
+                                    :active="route().current('users.index')"
+                                    v-if="hasPermission('users')"
+                                >
+                                    Users
                                 </NavLink>
                             </div>
                         </div>

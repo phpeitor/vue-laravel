@@ -2,7 +2,6 @@
 import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import { Head, Link, useForm, usePage } from "@inertiajs/vue3";
 import { watch, ref, onMounted } from "vue";
-import axios from "axios";
 import InputError from "@/components/InputError.vue";
 import { Switch } from '@/components/ui/switch'
 
@@ -18,7 +17,7 @@ const user = usePage().props.user;
 const form = useForm({
     name: user.data.name,
     email: user.data.email,
-    password: user.data.password,
+    password: '',
     estado: user.data.estado == 1, 
     role: usePage().props.currentRole,
 });
@@ -134,12 +133,14 @@ const submit = () => {
                                             v-model="form.password"
                                             type="password"
                                             id="password"
-                                            autocomplete="password"
+                                            autocomplete="new-password"
                                             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                             :class="{
                                                 'text-red-900 focus:ring-red-500 focus:border-red-500 border-red-300':
                                                     form.errors.password,
                                             }"
+
+                                            placeholder="•••••••• (dejar en blanco para no cambiar)"
                                         />
                                         <InputError
                                             class="mt-2"
