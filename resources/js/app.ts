@@ -48,8 +48,6 @@ router.on('error', (errors) => {
     }
 });
 
-
-
 // This will set light / dark mode on page load...
 initializeTheme();
 

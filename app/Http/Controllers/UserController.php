@@ -11,12 +11,23 @@ use App\Http\Requests\UpdateUserRequest;
 use Spatie\Permission\Models\Role; 
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
+use Inertia\Inertia;
 
 class UserController extends Controller
 {
+
+    /*public function __construct()
+    {
+        $this->authorizeResource(User::class, 'user');
+    }*/
     
     public function index(Request $request)
     {
+
+        if (Gate::denies('viewAny', User::class)) {
+            return Inertia::location(route('error.403'));
+        }
+
         $userQuery = User::search($request);
 
         return inertia('User/Index', [

@@ -19,7 +19,7 @@ const allNavItems: NavItem[] = [
 
 const mainNavItems = allNavItems.filter(item => {
     if (item.title === 'Users') {
-        return hasPermission('add user');
+        return hasPermission('users');
     }
     return true;
 });
