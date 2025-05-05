@@ -1,4 +1,5 @@
 <script setup>
+
 import { ref } from "vue";
 import ApplicationLogo from "@/components/ApplicationLogo.vue";
 import Dropdown from "@/components/Dropdown.vue";
@@ -11,6 +12,22 @@ import useAuth from "@/Composables/useAuth";
 const { hasPermission } = useAuth();
 const showingNavigationDropdown = ref(false);
 
+import { onMounted } from 'vue';
+import { useToast } from '@/components/ui/toast/use-toast';
+import { Toaster } from '@/components/ui/toast';
+
+const { toast } = useToast();
+
+onMounted(() => {
+    window.Echo.channel('online-users')
+        .listen('.UserLoggedIn', (e) => {
+            toast({
+                    title: 'Usuario en línea',
+                    description: `${e.user.name}`,
+                    variant: 'success',
+                });
+        });
+});
 </script>
 
 <template>
@@ -208,4 +225,9 @@ const showingNavigationDropdown = ref(false);
             </main>
         </div>
     </div>
+
+   
+    <Toaster />
+        
+
 </template>

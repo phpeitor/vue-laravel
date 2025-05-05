@@ -5,6 +5,7 @@ declare global {
         Echo: any;
     }
 }
+
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItemType } from '@/types';
 
@@ -24,7 +25,6 @@ import { Toaster } from '@/components/ui/toast';
 const { toast } = useToast();
 
 onMounted(() => {
-    //console.log('AppLayout mounted');
     window.Echo.channel('online-users')
         .listen('.UserLoggedIn', (e: any) => {
             toast({
