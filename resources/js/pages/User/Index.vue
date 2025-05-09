@@ -7,7 +7,6 @@ import { onMounted, ref, watch, computed } from "vue";
 import useAuth from "@/Composables/useAuth";
 
 const { hasPermission } = useAuth();
-
 const props = defineProps({
 
     users: {
@@ -26,7 +25,6 @@ onMounted(() => {
             flashMessage.value = '';
         }, 3000); 
     }
-
     //console.log("Usuarios:", props.users.data);
 });
 

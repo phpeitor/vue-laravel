@@ -9,7 +9,6 @@ import { ZiggyVue } from 'ziggy-js';
 import { router } from '@inertiajs/vue3'; 
 import { initializeTheme } from './composables/useAppearance';
 
-// Extend ImportMeta interface for Vite...
 interface ImportMetaEnv {
     readonly VITE_APP_NAME: string;
     [key: string]: string | boolean | undefined;
