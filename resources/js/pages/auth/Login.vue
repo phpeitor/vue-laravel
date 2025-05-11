@@ -106,9 +106,6 @@ const submit = () => {
                     </div>
                 </form>
             </AuthBase>
-
         </div>
-
     </div>
-
 </template>
