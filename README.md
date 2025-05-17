@@ -1,5 +1,5 @@
 <a href="https://www.instagram.com/amvsoft.tech/" target="_blank">
-  <img src="https://github.com/filamentphp/filament/assets/41773797/8d5a0b12-4643-4b5c-964a-56f0db91b90a" />
+  <img src="https://media2.dev.to/dynamic/image/width=1000,height=320,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2Flds4o7hrd51cqiktzzv4.png" />
 </a>
 
 <p align="center">
