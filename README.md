@@ -22,3 +22,9 @@ Iniciar el servidor WebSocket Laravel Reverb
 
 [![Video](https://img.youtube.com/vi/WNNn22SycQY/0.jpg)](https://www.youtube.com/watch?v=WNNn22SycQY)  
 [Ver demo](https://www.youtube.com/watch?v=WNNn22SycQY)
+
+<a href="#" target="_self" style="pointer-events: none;">
+  <img src="https://wiesseconsultores.com/demo.gif" alt="Demo Git">
+</a>
+
+*If you're interested in knowing the powerlevel configuration to get this prompt, have a look at [this gist](https://github.com/phpeitor/).*
