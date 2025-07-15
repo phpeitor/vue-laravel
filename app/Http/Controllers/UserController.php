@@ -26,9 +26,8 @@ class UserController extends Controller
         if (Gate::denies('viewAny', User::class)) {
             return Inertia::location(route('error.403'));
         }
-
+        
         $userQuery = User::search($request);
-
         return inertia('User/Index', [
             'users' => UserResource::collection(
                 $userQuery->paginate(5)
@@ -46,7 +45,6 @@ class UserController extends Controller
 
     public function create()
     {
-       
         if (!auth()->user()->hasPermissionTo('add user')) {
             return redirect()->route('error.403'); 
         }
@@ -64,16 +62,13 @@ class UserController extends Controller
         }
 
         $user = User::create($request->validated());
-
         $user->assignRole($request->role); 
-
         return redirect()->route('users.index');
     }
 
     public function edit(User $user)
     {
         $roles = Role::pluck('name');
-
         return inertia('User/Edit', [
             'user' => UserResource::make($user),
             'roles' => $roles,
@@ -85,7 +80,6 @@ class UserController extends Controller
     {
 
         $validated = $request->validated();
-
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->estado = $validated['estado'];
@@ -95,9 +89,7 @@ class UserController extends Controller
         }
 
         $user->save();
-
         $user->syncRoles([$validated['role']]);
-        
         return redirect()->route('users.index')
         ->with('success', $user->name . ' actualizado correctamente');
     }
@@ -105,7 +97,6 @@ class UserController extends Controller
     public function destroy(User $user)
     {
          $user->update(['estado' => 0]);
-
         return redirect()->route('users.index');
     }
 

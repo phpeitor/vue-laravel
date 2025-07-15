@@ -29,13 +29,7 @@ const submit = () => {
 
 <template>
     <div class="relative min-h-screen overflow-hidden">
-        <video
-            autoplay
-            muted
-            loop
-            playsinline
-            class="absolute inset-0 z-0 w-full h-full object-cover"
-        >
+        <video autoplay muted loop playsinline class="absolute inset-0 z-0 w-full h-full object-cover">
             <source src="/video/imperia.mp4" type="video/mp4" />
             Tu navegador no soporta el video.
         </video>
@@ -82,7 +76,7 @@ const submit = () => {
                                 :tabindex="2"
                                 autocomplete="current-password"
                                 v-model="form.password"
-                                placeholder="Password"
+                                placeholder="*********"
                             />
                             <InputError :message="form.errors.password" />
                         </div>

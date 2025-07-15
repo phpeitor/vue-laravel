@@ -1,4 +1,5 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
+import { Script } from 'vm';
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -13,6 +14,7 @@ export default {
         extend: {
             fontFamily: {
                 sans: ['Instrument Sans', ...defaultTheme.fontFamily.sans],
+                script: ['"Dancing Script"', 'cursive']
             },
             borderRadius: {
                 lg: 'var(--radius)',

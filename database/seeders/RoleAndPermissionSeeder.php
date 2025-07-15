@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -10,26 +9,58 @@ use App\Models\User;
 
 class RoleAndPermissionSeeder extends Seeder
 {
- 
     public function run(): void
     {
-        Permission::query()->delete();
-        
-        Permission::firstOrCreate(['name' => 'users']);
-        Permission::firstOrCreate(['name' => 'edit user']);
-        Permission::firstOrCreate(['name' => 'delete user']);
-        Permission::firstOrCreate(['name' => 'add user']);
-        Permission::firstOrCreate(['name' => 'students']);  
+        $permissions = [
+            'users',
+            'edit user',
+            'delete user',
+            'add user',
+            'templates',
+        ];
 
-        //$admin = Role::create(['name' => 'admin']);
-        //$user = Role::create(['name' => 'user']);
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission]);
+        }
+
         $admin = Role::firstOrCreate(['name' => 'admin']);
         $user = Role::firstOrCreate(['name' => 'user']);
 
-        $admin->givePermissionTo(['users', 'delete user', 'edit user', 'add user']);
-        $user->givePermissionTo(['students']);
+        $admin->syncPermissions([
+            'users',
+            'edit user',
+            'delete user',
+            'add user',
+            'templates',
+        ]);
 
-        $user1 = User::find(1); 
-        $user1->assignRole('admin'); 
+        $user->syncPermissions([
+            'templates',
+        ]);
+
+        $email = request()->get('email');
+        $roleInput = request()->get('role');
+
+        if (!$email || !$roleInput) {
+            $this->command->warn("📌 Seeder ejecutado sin asignar usuario. Se crearon roles y permisos.");
+            return;
+        }
+
+        $validRoles = ['admin', 'user'];
+        if (!in_array($roleInput, $validRoles)) {
+            $this->command->error("❌ Rol inválido: '$roleInput'. Usa: admin o user.");
+            return;
+        }
+
+        $userModel = User::where('email', $email)->first();
+
+        if (!$userModel) {
+            $this->command->error("❌ No se encontró un usuario con el email: $email");
+            return;
+        }
+
+        $userModel->syncRoles([$roleInput]);
+
+        $this->command->info("✅ Rol '$roleInput' asignado a {$userModel->name} ({$userModel->email})");
     }
 }

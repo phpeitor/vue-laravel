@@ -7,14 +7,14 @@ import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, Users, Notebook  } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
-import useAuth from '@/Composables/useAuth';
+import useAuth from '@/composables/useAuth';
 
 const { hasPermission } = useAuth();
 
 const allNavItems: NavItem[] = [
-    { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-    { title: 'Students', href: '/students', icon: Notebook },
-    { title: 'Users', href: '/users', icon: Users },
+    { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
+    { title: 'Plantillas', href: '/templates', icon: Notebook },
+    { title: 'Usuarios', href: '/users', icon: Users },
 ];
 
 const mainNavItems = allNavItems.filter(item => {
@@ -58,7 +58,7 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <!--<NavFooter :items="footerNavItems" />-->
             <NavUser />
         </SidebarFooter>
     </Sidebar>
