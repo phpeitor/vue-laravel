@@ -29,7 +29,7 @@ class TemplateController extends Controller
             if ($communicationChannelId) {
                 $response = Http::withOptions([
                     'verify' => false,
-                ])->post('https://omnichannel.strategiacode.com/template/whatsapp/sync', [
+                ])->post(env('WHATSAPP_SYNC_URL'), [
                     'companyId' => $companyId,
                     'communicationChannelId' => $communicationChannelId,
                 ]);
@@ -55,12 +55,6 @@ class TemplateController extends Controller
        
     }
 
-    protected function applySearch(Builder $query, $search)
-    {
-        return $query->when($search, function ($query, $search) {
-            $query->where('name', 'like', '%' . $search . '%');
-        });
-    }
 
     public function create()
     {

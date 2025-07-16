@@ -51,15 +51,13 @@ onMounted(() => {
                                 Inicio
                             </NavLink>
                             
-                            <NavLink
-                                :href="route('templates.index')"
-                                :active="
-                                    route().current('templates.index') ||
-                                    route().current('templates.create') ||
-                                    route().current('templates.edit')
-                                "
-                            >
-                                Plantillas
+                            <NavLink :href="route('templates.index')" 
+                                    :active="
+                                            route().current('templates.index') ||
+                                            route().current('templates.create') ||
+                                            route().current('templates.edit')
+                                        "
+                                    v-if="hasPermission('templates')"> Plantillas 
                             </NavLink>
 
                             <NavLink :href="route('users.index')" 

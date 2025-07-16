@@ -216,11 +216,15 @@ const table = useVueTable({
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="sm:flex sm:items-center">
           <div class="sm:flex-auto">
-            <h1 class="text-xl font-semibold text-foreground">Lista de Plantillas</h1>
+            <div class="flex items-center gap-2">
+              <h1 class="text-xl font-semibold text-foreground">Plantillas de Comunicación</h1>
+              <Button variant="outline" class="h-7 w-7 p-0">
+                <ChevronRight class="w-3 h-3" />
+              </Button>
+            </div>
           </div>
 
-
-          <div class="flex flex-wrap items-center gap-4 mb-4">
+          <div class="flex flex-wrap items-center">
             <select
               v-model="companyId"
               @change="onCompanyChange"

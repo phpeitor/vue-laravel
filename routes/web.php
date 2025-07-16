@@ -27,12 +27,11 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::resource('templates', TemplateController::class);
+    Route::get('/templates/create', [TemplateController::class, 'create'])->name('templates.create');
 
-    Route::resource('users', UserController::class)->except(['create', 'edit']);
+    Route::resource('users', UserController::class)->except(['create', 'edit', 'show']);
     Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
-    Route::get('/users/{user}/edit', [UserController::class, 'edit'])
-        ->middleware('permission:edit user')
-        ->name('users.edit');
+    Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware('permission:edit user')->name('users.edit');
 
     Route::get('/error/403', function () {
         return Inertia::render('Errors/Error403');
