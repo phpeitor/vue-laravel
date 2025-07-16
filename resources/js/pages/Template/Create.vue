@@ -4,6 +4,9 @@ import { Head, Link, useForm } from "@inertiajs/vue3";
 import { Bell, Check } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Card,
   CardContent,
@@ -13,21 +16,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-
-const notifications = [
-  {
-    title: 'Your call has been confirmed.',
-    description: '1 hour ago',
-  },
-  {
-    title: 'You have a new message!',
-    description: '1 hour ago',
-  },
-  {
-    title: 'Your subscription is expiring soon!',
-    description: '2 hours ago',
-  },
-]
 
 defineProps({
     classes: {
@@ -67,7 +55,7 @@ const submit = () => {
                 <div>
                   <h3 class="text-lg leading-6 font-medium text-foreground">Template Information</h3>
                   <p class="mt-1 text-sm text-muted-foreground">
-                    Use this form to create a new template.
+                    Nueva plantilla de comunicación
                   </p>
                 </div>
 
@@ -82,6 +70,9 @@ const submit = () => {
                       :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.categoria }"
                     >
                       <option value="">Seleccione categoría</option>
+                      <option value="marketing">Marketing</option>
+                      <option value="utilidad">Utilidad</option>
+                      <option value="autenticacion">Autenticación</option>
                     </select>
                     <InputError class="mt-2" :message="form.errors.categoria" />
                   </div>
@@ -107,6 +98,8 @@ const submit = () => {
                       :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.idioma }"
                     >
                       <option value="">Seleccione idioma</option>
+                      <option value="es">Español</option>
+                      <option value="en">Ingles</option>
                     </select>
                     <InputError class="mt-2" :message="form.errors.idioma" />
                   </div>
@@ -120,6 +113,8 @@ const submit = () => {
                       :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.tipo }"
                     >
                       <option value="">Seleccione tipo</option>
+                      <option value="multimedia">Multimedia</option>
+                      <option value="carrusel">Carrusel</option>
                     </select>
                     <InputError class="mt-2" :message="form.errors.tipo" />
                   </div>
@@ -127,44 +122,112 @@ const submit = () => {
                   <div class="col-span-4 sm:col-span-3">
                     <Card>
                         <CardHeader>
-                          <CardTitle>Notifications</CardTitle>
-                          <CardDescription>You have 3 unread messages.</CardDescription>
+                          <CardTitle>Edición de Plantilla</CardTitle>
                         </CardHeader>
                         <CardContent class="grid gap-4">
                           <div class=" flex items-center space-x-4 rounded-md border p-4">
                             <Bell />
                             <div class="flex-1 space-y-1">
                               <p class="text-sm font-medium leading-none">
-                                Push Notifications
+                                Encabezado
                               </p>
                               <p class="text-sm text-muted-foreground">
-                                Send notifications to device.
+                                Añade un título o elige qué tipo de contenido usarás para este encabezado
                               </p>
                             </div>
                             <Switch />
                           </div>
-                          <div>
-                            <div
-                              v-for="(notification, index) in notifications" :key="index"
-                              class="mb-4 grid grid-cols-[25px_minmax(0,1fr)] items-start pb-4 last:mb-0 last:pb-0"
+
+                          <div class="flex gap-2">
+                            <select
+                              v-model="form.tipo_cabecera"
+                              id="tipo_cabecera"
+                              class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                              :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.tipo_cabecera }"
                             >
-                              <span class="flex h-2 w-2 translate-y-1 rounded-full bg-sky-500" />
-                              <div class="space-y-1">
-                                <p class="text-sm font-medium leading-none">
-                                  {{ notification.title }}
-                                </p>
-                                <p class="text-sm text-muted-foreground">
-                                  {{ notification.description }}
-                                </p>
-                              </div>
-                            </div>
+                              <option value="">Ninguno</option>
+                              <option value="texto">Texto</option>
+                              <option value="multimedia">Multimedia</option>
+                            </select>
+
+                            <input
+                                v-model="form.texto_encabezado"
+                                type="text"
+                                id="texto_encabezado"
+                                class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                                :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.texto_encabezado }"
+                              />
+                          </div>
+
+                          <div class="flex">
+                              <RadioGroup default-value="opt-imagen" class="flex gap-4">
+                                <div class="flex items-center space-x-2">
+                                  <RadioGroupItem id="opt-imagen" value="opt-imagen" />
+                                  <Label for="opt-imagen">Imágen</Label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                  <RadioGroupItem id="option-video" value="option-video" />
+                                  <Label for="option-video">Video</Label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                  <RadioGroupItem id="option-documento" value="option-documento" />
+                                  <Label for="option-documento">Documento</Label>
+                                </div>
+                              </RadioGroup>
+                          </div>
+
+                          <div class="flex-1 space-y-1">
+                            <Input id="picture" type="file" />
+                          </div>
+
+                          <div class="flex-1 space-y-1">
+                              <p class="text-sm font-medium leading-none">
+                                Cuerpo
+                              </p>
+                              <p class="text-sm text-muted-foreground">
+                                Introduce el texto de tu mensaje en el idioma que has seleccionado
+                              </p>
+                              <Textarea
+                                class="resize-none"
+                                v-bind="componentField"
+                              />
                           </div>
                         </CardContent>
                         <CardFooter>
-                          <Button class="w-full">
-                            <Check class="mr-2 h-4 w-4" /> Mark all as read
-                          </Button>
+                            <div class="flex-1 space-y-1">
+                              <p class="text-sm font-medium leading-none">
+                                Pié de página
+                              </p>
+                              <p class="text-sm text-muted-foreground">
+                                Añade una breve línea de texto en la parte inferior de tu plantilla de mensaje
+                              </p>
+
+                              <input
+                                v-model="form.pie_pagina"
+                                type="text"
+                                id="pie_pagina"
+                                class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                                :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.pie_pagina }"
+                              />
+                              <InputError class="mt-2" :message="form.errors.pie_pagina" />
+                            </div>
                         </CardFooter>
+                    </Card>
+                  </div>
+
+
+                   <div class="col-span-4 sm:col-span-3">
+                    <Card>
+                        <CardHeader>
+                          <CardTitle>Previsualización del Mensaje</CardTitle>
+                          <CardDescription>
+                            Vista previa del mensaje configurado a enviar
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent class="grid gap-4">
+
+
+                        </CardContent>
                     </Card>
                   </div>
 
