@@ -1,5 +1,8 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
+<<<<<<< HEAD
 import { Script } from 'vm';
+=======
+>>>>>>> gitlab/main
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -14,7 +17,10 @@ export default {
         extend: {
             fontFamily: {
                 sans: ['Instrument Sans', ...defaultTheme.fontFamily.sans],
+<<<<<<< HEAD
                 script: ['"Dancing Script"', 'cursive']
+=======
+>>>>>>> gitlab/main
             },
             borderRadius: {
                 lg: 'var(--radius)',

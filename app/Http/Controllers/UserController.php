@@ -26,8 +26,14 @@ class UserController extends Controller
         if (Gate::denies('viewAny', User::class)) {
             return Inertia::location(route('error.403'));
         }
+<<<<<<< HEAD
         
         $userQuery = User::search($request);
+=======
+
+        $userQuery = User::search($request);
+
+>>>>>>> gitlab/main
         return inertia('User/Index', [
             'users' => UserResource::collection(
                 $userQuery->paginate(5)
@@ -45,6 +51,10 @@ class UserController extends Controller
 
     public function create()
     {
+<<<<<<< HEAD
+=======
+       
+>>>>>>> gitlab/main
         if (!auth()->user()->hasPermissionTo('add user')) {
             return redirect()->route('error.403'); 
         }
@@ -62,13 +72,23 @@ class UserController extends Controller
         }
 
         $user = User::create($request->validated());
+<<<<<<< HEAD
         $user->assignRole($request->role); 
+=======
+
+        $user->assignRole($request->role); 
+
+>>>>>>> gitlab/main
         return redirect()->route('users.index');
     }
 
     public function edit(User $user)
     {
         $roles = Role::pluck('name');
+<<<<<<< HEAD
+=======
+
+>>>>>>> gitlab/main
         return inertia('User/Edit', [
             'user' => UserResource::make($user),
             'roles' => $roles,
@@ -80,6 +100,10 @@ class UserController extends Controller
     {
 
         $validated = $request->validated();
+<<<<<<< HEAD
+=======
+
+>>>>>>> gitlab/main
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->estado = $validated['estado'];
@@ -89,7 +113,13 @@ class UserController extends Controller
         }
 
         $user->save();
+<<<<<<< HEAD
         $user->syncRoles([$validated['role']]);
+=======
+
+        $user->syncRoles([$validated['role']]);
+        
+>>>>>>> gitlab/main
         return redirect()->route('users.index')
         ->with('success', $user->name . ' actualizado correctamente');
     }
@@ -97,6 +127,10 @@ class UserController extends Controller
     public function destroy(User $user)
     {
          $user->update(['estado' => 0]);
+<<<<<<< HEAD
+=======
+
+>>>>>>> gitlab/main
         return redirect()->route('users.index');
     }
 

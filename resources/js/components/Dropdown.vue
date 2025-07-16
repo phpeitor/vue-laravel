@@ -12,7 +12,11 @@ const props = defineProps({
     },
     contentClasses: {
         type: String,
+<<<<<<< HEAD
         default: 'py-1 bg-popover text-popover-foreground',
+=======
+        default: 'py-1 bg-white',
+>>>>>>> gitlab/main
     },
 });
 
@@ -28,7 +32,11 @@ onUnmounted(() => document.removeEventListener('keydown', closeOnEscape));
 const widthClass = computed(() => {
     return {
         48: 'w-48',
+<<<<<<< HEAD
     }[props.width.toString()] || 'w-48';
+=======
+    }[props.width.toString()];
+>>>>>>> gitlab/main
 });
 
 const alignmentClasses = computed(() => {
@@ -68,10 +76,18 @@ const open = ref(false);
                 style="display: none"
                 @click="open = false"
             >
+<<<<<<< HEAD
                 <div class="rounded-md ring-1 ring-border" :class="contentClasses">
+=======
+                <div class="rounded-md ring-1 ring-black ring-opacity-5" :class="contentClasses">
+>>>>>>> gitlab/main
                     <slot name="content" />
                 </div>
             </div>
         </Transition>
     </div>
+<<<<<<< HEAD
 </template>
+=======
+</template>
+>>>>>>> gitlab/main

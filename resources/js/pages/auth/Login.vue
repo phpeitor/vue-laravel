@@ -29,7 +29,17 @@ const submit = () => {
 
 <template>
     <div class="relative min-h-screen overflow-hidden">
+<<<<<<< HEAD
         <video autoplay muted loop playsinline class="absolute inset-0 z-0 w-full h-full object-cover">
+=======
+        <video
+            autoplay
+            muted
+            loop
+            playsinline
+            class="absolute inset-0 z-0 w-full h-full object-cover"
+        >
+>>>>>>> gitlab/main
             <source src="/video/imperia.mp4" type="video/mp4" />
             Tu navegador no soporta el video.
         </video>
@@ -76,7 +86,11 @@ const submit = () => {
                                 :tabindex="2"
                                 autocomplete="current-password"
                                 v-model="form.password"
+<<<<<<< HEAD
                                 placeholder="*********"
+=======
+                                placeholder="Password"
+>>>>>>> gitlab/main
                             />
                             <InputError :message="form.errors.password" />
                         </div>

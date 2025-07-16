@@ -12,9 +12,15 @@ import useAuth from '@/composables/useAuth';
 const { hasPermission } = useAuth();
 
 const allNavItems: NavItem[] = [
+<<<<<<< HEAD
     { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
     { title: 'Plantillas', href: '/templates', icon: Notebook },
     { title: 'Usuarios', href: '/users', icon: Users },
+=======
+    { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+    { title: 'Students', href: '/students', icon: Notebook },
+    { title: 'Users', href: '/users', icon: Users },
+>>>>>>> gitlab/main
 ];
 
 const mainNavItems = allNavItems.filter(item => {
@@ -47,7 +53,11 @@ const footerNavItems: NavItem[] = [
                         <Link :href="route('dashboard')">
                             <AppLogo />
                         </Link>
+<<<<<<< HEAD
                         
+=======
+
+>>>>>>> gitlab/main
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
@@ -58,7 +68,11 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
+<<<<<<< HEAD
             <!--<NavFooter :items="footerNavItems" />-->
+=======
+            <NavFooter :items="footerNavItems" />
+>>>>>>> gitlab/main
             <NavUser />
         </SidebarFooter>
     </Sidebar>
