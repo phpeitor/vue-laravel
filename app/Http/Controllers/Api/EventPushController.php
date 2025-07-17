@@ -9,15 +9,12 @@ class EventPushController
 {
     public function push(Request $request)
     {
-
-//        return response()->json(['status' => '666']);
         $data = $request->validate([
             'type' => 'required|string',
             'data' => 'required|array',
         ]);
-//        return response()->json($data);
-//        broadcast(new ExternalEventReceived($data))->toOthers();
-        broadcast(new ExternalEventReceived($data));
+
+        broadcast(new ExternalEventReceived($data))->toOthers();
 
         return response()->json(['status' => 'ok']);
     }

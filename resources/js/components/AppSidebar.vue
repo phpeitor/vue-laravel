@@ -12,9 +12,9 @@ import useAuth from '@/composables/useAuth';
 const { hasPermission } = useAuth();
 
 const allNavItems: NavItem[] = [
-    { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-    { title: 'Students', href: '/students', icon: Notebook },
-    { title: 'Users', href: '/users', icon: Users },
+    { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
+    { title: 'Plantillas', href: '/templates', icon: Notebook },
+    { title: 'Usuarios', href: '/users', icon: Users },
 ];
 
 const mainNavItems = allNavItems.filter(item => {
@@ -47,7 +47,7 @@ const footerNavItems: NavItem[] = [
                         <Link :href="route('dashboard')">
                             <AppLogo />
                         </Link>
-
+                        
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
@@ -58,7 +58,7 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <!--<NavFooter :items="footerNavItems" />-->
             <NavUser />
         </SidebarFooter>
     </Sidebar>
