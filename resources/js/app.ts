@@ -23,7 +23,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
     title: (title) => {
-        console.log("Title being set:", title);
+        //console.log("Title being set:", title);
         if (title === 'Error403') {
             return `403 - Laravel`; 
         }

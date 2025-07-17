@@ -3,9 +3,10 @@ import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import { Bell, Check } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
-import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { AspectRatio } from '@/components/ui/aspect-ratio'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Card,
@@ -16,6 +17,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { ref, watch, computed  } from 'vue'
+
+const showHeader = ref(false)
 
 defineProps({
     classes: {
@@ -28,11 +32,40 @@ defineProps({
 });
 
 const form = useForm({
-    name: "",
-    email: "",
-    password: "",
-    role: "",
-});
+  nombre: "",
+  idioma: "",
+  tipo: "",
+  categoria: "",
+  tipo_cabecera: "",
+  texto_encabezado: "",
+  tipo_multimedia: "", 
+  cuerpo: "", 
+  pie_pagina: ""
+})
+
+const acceptFileType = computed(() => {
+  switch (form.tipo_multimedia) {
+    case 'imagen':
+      return 'image/*'
+    case 'video':
+      return 'video/mp4'
+    case 'documento':
+      return 'application/pdf'
+    default:
+      return ''
+  }
+})
+
+watch(() => form.tipo_cabecera, (value) => {
+  if (value === 'texto') {
+    form.tipo_multimedia = ''
+  } else if (value === 'multimedia') {
+    form.texto_encabezado = ''
+  } else {
+    form.texto_encabezado = ''
+    form.tipo_multimedia = ''
+  }
+})
 
 
 const submit = () => {
@@ -40,6 +73,18 @@ const submit = () => {
         preserveScroll: true,
     });
 };
+
+const horaActual = ref('')
+
+const actualizarHora = () => {
+  const ahora = new Date()
+  const horas = ahora.getHours().toString().padStart(2, '0')
+  const minutos = ahora.getMinutes().toString().padStart(2, '0')
+  horaActual.value = `${horas}:${minutos}`
+}
+
+actualizarHora()
+setInterval(actualizarHora, 60000)
 </script>
 
 <template>
@@ -135,14 +180,14 @@ const submit = () => {
                                 Añade un título o elige qué tipo de contenido usarás para este encabezado
                               </p>
                             </div>
-                            <Switch />
+                            <Switch v-model="showHeader" />
                           </div>
 
-                          <div class="flex gap-2">
+                          <div v-if="showHeader" class="flex gap-2">
                             <select
                               v-model="form.tipo_cabecera"
                               id="tipo_cabecera"
-                              class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                              class="block border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
                               :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.tipo_cabecera }"
                             >
                               <option value="">Ninguno</option>
@@ -151,33 +196,39 @@ const submit = () => {
                             </select>
 
                             <input
-                                v-model="form.texto_encabezado"
-                                type="text"
-                                id="texto_encabezado"
-                                class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
-                                :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.texto_encabezado }"
-                              />
+                              v-if="form.tipo_cabecera === 'texto'"
+                              v-model="form.texto_encabezado"
+                              type="text"
+                              :maxlength="60"
+                              id="texto_encabezado"
+                              class="block border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors flex-1"
+                              :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.texto_encabezado }"
+                            />
                           </div>
 
-                          <div class="flex">
-                              <RadioGroup default-value="opt-imagen" class="flex gap-4">
+                          <div v-if="showHeader && form.tipo_cabecera === 'multimedia'" class="mt-2 space-y-2">
+                              <RadioGroup v-model="form.tipo_multimedia" class="flex gap-4">
                                 <div class="flex items-center space-x-2">
-                                  <RadioGroupItem id="opt-imagen" value="opt-imagen" />
-                                  <Label for="opt-imagen">Imágen</Label>
+                                  <RadioGroupItem id="option-imagen" value="imagen" />
+                                  <Label for="option-imagen">Imágen</Label>
                                 </div>
                                 <div class="flex items-center space-x-2">
-                                  <RadioGroupItem id="option-video" value="option-video" />
+                                  <RadioGroupItem id="option-video" value="video" />
                                   <Label for="option-video">Video</Label>
                                 </div>
                                 <div class="flex items-center space-x-2">
-                                  <RadioGroupItem id="option-documento" value="option-documento" />
+                                  <RadioGroupItem id="option-documento" value="documento" />
                                   <Label for="option-documento">Documento</Label>
                                 </div>
                               </RadioGroup>
-                          </div>
 
-                          <div class="flex-1 space-y-1">
-                            <Input id="picture" type="file" />
+                              <Input
+                                id="fichero"
+                                type="file"
+                                :accept="acceptFileType"
+                                :disabled="!form.tipo_multimedia"
+                                class="w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
                           </div>
 
                           <div class="flex-1 space-y-1">
@@ -187,9 +238,9 @@ const submit = () => {
                               <p class="text-sm text-muted-foreground">
                                 Introduce el texto de tu mensaje en el idioma que has seleccionado
                               </p>
-                              <Textarea
+                              <Textarea v-model="form.cuerpo"
+                                :maxlength="1024"
                                 class="resize-none"
-                                v-bind="componentField"
                               />
                           </div>
                         </CardContent>
@@ -205,6 +256,7 @@ const submit = () => {
                               <input
                                 v-model="form.pie_pagina"
                                 type="text"
+                                :maxlength="60"
                                 id="pie_pagina"
                                 class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
                                 :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.pie_pagina }"
@@ -224,10 +276,44 @@ const submit = () => {
                             Vista previa del mensaje configurado a enviar
                           </CardDescription>
                         </CardHeader>
-                        <CardContent class="grid gap-4">
+                        
+                        <CardContent class="flex justify-start">
+                          <div class="relative w-[450px]">
+                            <!-- Imagen de fondo adaptativa -->
+                            <div
+                              class="rounded-md bg-cover bg-center w-full min-h-[200px] bg-no-repeat p-4"
+                              :style="{ backgroundImage: 'url(/img/template.jpeg)' }"
+                            >
+                              <!-- Globo del mensaje -->
+                              <div
+                                class="bg-white rounded-xl shadow-md p-4 w-[90%] sm:w-[75%] break-words text-sm relative"
+                                style="color: black;"
+                              >
+                                <!-- Encabezado -->
+                                <div v-if="showHeader && form.tipo_cabecera === 'texto'" class="font-bold mb-1">
+                                  {{ form.texto_encabezado }}
+                                </div>
 
+                                <!-- Cuerpo -->
+                                <div class="whitespace-pre-wrap">
+                                  {{ form.cuerpo }}
+                                </div>
 
+                                <!-- Pié de página -->
+                                <div v-if="form.pie_pagina" class="mt-2 text-xs text-gray-500">
+                                  {{ form.pie_pagina }}
+                                </div>
+
+                                <!-- Hora -->
+                                <div class="mt-2 text-xs text-gray-400 text-right">
+                                  {{ horaActual }}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </CardContent>
+
+
                     </Card>
                   </div>
 
