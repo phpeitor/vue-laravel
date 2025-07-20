@@ -9,21 +9,28 @@ import { BookOpen, Folder, LayoutGrid, Users, Notebook  } from 'lucide-vue-next'
 import AppLogo from './AppLogo.vue';
 import useAuth from '@/composables/useAuth';
 
-const { hasPermission } = useAuth();
+const { hasPermission, user, permissions } = useAuth();
+
+console.log('🔐 Usuario autenticado:', user.value);
+console.log('🔐 Permisos disponibles:', permissions.value);
 
 const allNavItems: NavItem[] = [
-    { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
-    { title: 'Plantillas', href: '/templates', icon: Notebook },
-    { title: 'Usuarios', href: '/users', icon: Users },
+  { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
+  { title: 'Plantillas', href: '/templates', icon: Notebook },
+  { title: 'Usuarios', href: '/users', icon: Users },
 ];
 
 const mainNavItems = allNavItems.filter(item => {
-    if (item.title === 'Users') {
-        return hasPermission('users');
-    }
-    return true;
-});
+  if (item.title === 'Usuarios') {
+    return hasPermission('users');
+  }
+  if (item.title === 'Plantillas') {
+    return hasPermission('templates'); 
+  }
+  return true;
+})
 
+/*
 const footerNavItems: NavItem[] = [
     {
         title: 'Github Repo',
@@ -35,7 +42,7 @@ const footerNavItems: NavItem[] = [
         href: 'https://laravel.com/docs/starter-kits',
         icon: BookOpen,
     },
-];
+];*/
 </script>
 
 <template>

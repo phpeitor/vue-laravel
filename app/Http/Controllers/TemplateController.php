@@ -6,11 +6,19 @@ use App\Models\Template;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Http;
+use Spatie\Permission\Models\Role; 
+use Illuminate\Support\Facades\Gate;
+use Spatie\Permission\Models\Permission;
+use Inertia\Inertia;
 
 class TemplateController extends Controller
 {
     public function index(Request $request)
     {
+        if (Gate::denies('viewAny', Template::class)) {
+            return Inertia::location(route('error.403'));
+        }
+        
         $companyId = $request->input('companyId');
         $communicationChannelId = $request->input('communicationChannelId');
 
@@ -58,16 +66,74 @@ class TemplateController extends Controller
 
     public function create()
     {
-      
+        if (!auth()->user()->hasPermissionTo('add template')) {
+            return redirect()->route('error.403'); 
+        }
+
         return inertia('Template/Create', [
 
         ]);
     }
 
-    public function store(StoreTemplateRequest $request)
+    public function store(Request $request)
     {
-        Template::create($request->validated());
-        return redirect()->route('templates.index');
+        $companyId = $request->query('companyId');
+        $communicationChannelId = $request->query('communicationChannelId');
+
+        $validated = $request->validate([
+            'nombre' => 'required|string|max:100',
+            'idioma' => 'required|string|max:5',
+            'categoria' => 'required|string|max:30',
+            'tipo' => 'required|string|max:30',
+            'cuerpo' => 'required|string|max:1024',
+            'pie_pagina' => 'nullable|string|max:60',
+        ]);
+
+        preg_match_all('/{{\d+}}/', $validated['cuerpo'], $matches);
+        $totalVariables = count(array_unique($matches[0]));
+
+        $examples = [];
+        for ($i = 1; $i <= $totalVariables; $i++) {
+            $examples[] = "Ejemplo $i";
+        }
+
+        $components = [
+            [
+                "type" => "BODY",
+                "text" => $validated['cuerpo'],
+                "example" => [
+                    "body_text" => [$examples]
+                ]
+            ]
+        ];
+
+        if (!empty($validated['pie_pagina'])) {
+            $components[] = [
+                "type" => "FOOTER",
+                "text" => $validated['pie_pagina']
+            ];
+        }
+
+        $payload = [
+            "companyId" => (int)$companyId,
+            "communicationChannelId" => (int)$communicationChannelId,
+            "templateData" => [
+                "name" => $validated['nombre'],
+                "language" => $validated['idioma'],
+                "category" => strtoupper($validated['categoria']),
+                "components" => $components,
+            ]
+        ];
+
+        $response = Http::withOptions([
+            'verify' => false,
+        ])->post(env('WHATSAPP_NEW_URL'), $payload);
+
+        if ($response->successful()) {
+            return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
+        } else {
+            return back()->withErrors(['api' => 'Error al crear plantilla: ' . $response->body()]);
+        }
     }
  
 }

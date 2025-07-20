@@ -8,7 +8,6 @@ use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
-    //return Inertia::render('Welcome');
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
@@ -26,17 +25,24 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::resource('templates', TemplateController::class);
-    Route::get('/templates/create', [TemplateController::class, 'create'])->name('templates.create');
+    Route::resource('templates', TemplateController::class)->middleware('permission:templates');
 
-    Route::resource('users', UserController::class)->except(['create', 'edit', 'show']);
-    Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
-    Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware('permission:edit user')->name('users.edit');
+    Route::get('/templates/create', [TemplateController::class, 'create'])
+        ->middleware('permission:add template')
+        ->name('templates.create');
 
-    Route::get('/error/403', function () {
-        return Inertia::render('Errors/Error403');
-    })->name('error.403');  
+    Route::resource('users', UserController::class)->except(['create', 'edit', 'show'])
+        ->middleware('permission:users');
 
+    Route::get('/users/create', [UserController::class, 'create'])
+        ->middleware('permission:add user')
+        ->name('users.create');
+
+    Route::get('/users/{user}/edit', [UserController::class, 'edit'])
+        ->middleware('permission:edit user')
+        ->name('users.edit');
+
+    Route::get('/error/403', fn () => Inertia::render('Errors/Error403'))->name('error.403');
 });
 
 require __DIR__.'/settings.php';
