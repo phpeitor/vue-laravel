@@ -6,6 +6,7 @@ use App\Models\Template;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role; 
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
@@ -34,21 +35,18 @@ class TemplateController extends Controller
                 ->get()
                 ->toArray();
 
-            if ($communicationChannelId) {
-                $response = Http::withOptions([
-                    'verify' => false,
-                ])->post(env('WHATSAPP_SYNC_URL'), [
-                    'companyId' => $companyId,
-                    'communicationChannelId' => $communicationChannelId,
-                ]);
-
-                $data = $response->json();
-
-                if ($data['success'] ?? false) {
-                    $templates = $data['templateList'] ?? [];
-                } else {
-                    $errorMessage = $data['message'] ?? 'Error inesperado al cargar las plantillas.';
-                }
+            if ($communicationChannelId) {            
+                $templates = DB::table('message_templates')
+                ->where('company_id', $companyId)
+                ->where('communication_channel_id', $communicationChannelId)
+                ->select('id', 'name', 'category', 'components', 'meta_status')
+                ->orderBy('id', 'desc')
+                ->get()
+                ->map(function ($template) {
+                    $template->components = json_decode($template->components, true);
+                    return $template;
+                })
+                ->toArray();
             }
         }
 
@@ -62,7 +60,6 @@ class TemplateController extends Controller
         ]);
        
     }
-
 
     public function create()
     {

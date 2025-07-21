@@ -86,10 +86,10 @@ const columns = [
     cell: ({ row }) => h('span', row.getValue('category')),
   },
   {
-    accessorKey: 'metaStatus',
+    accessorKey: 'meta_status',
     header: 'Estado',
     cell: ({ row }) => {
-      const status = row.getValue('metaStatus')
+      const status = row.getValue('meta_status')
       const statusClass = {
         APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
         REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
