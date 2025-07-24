@@ -74,7 +74,8 @@ const form = useForm({
   texto_encabezado: "",
   tipo_multimedia: "", 
   cuerpo: "", 
-  pie_pagina: ""
+  pie_pagina: "",
+  header_file: null,
 })
 
 const acceptFileType = computed(() => {
@@ -90,14 +91,38 @@ const acceptFileType = computed(() => {
   }
 })
 
+const inputFile = ref(null)
+
+watch(() => form.tipo_multimedia, () => {
+  headerFile.value = null
+  headerPreviewUrl.value = ''
+
+  nextTick(() => {
+    setTimeout(() => {
+      const input = inputFile.value?.input || inputFile.value?.$el || inputFile.value
+
+      if (input && input instanceof HTMLInputElement) {
+        input.value = ''
+      } else if (input?.querySelector) {
+        const fileInput = input.querySelector('input[type="file"]')
+        if (fileInput) fileInput.value = ''
+      }
+    }, 10) 
+  })
+})
+
 watch(() => form.tipo_cabecera, (value) => {
   if (value === 'texto') {
     form.tipo_multimedia = ''
+    headerFile.value = null
+    headerPreviewUrl.value = ''
   } else if (value === 'multimedia') {
     form.texto_encabezado = ''
   } else {
     form.texto_encabezado = ''
     form.tipo_multimedia = ''
+    headerFile.value = null
+    headerPreviewUrl.value = ''
   }
 })
 
@@ -108,8 +133,16 @@ watch(() => form.cuerpo, (text) => {
 const submit = () => {
   form.post(route("templates.store") + `?companyId=${companyId}&communicationChannelId=${communicationChannelId}`, {
     preserveScroll: true,
+    forceFormData: true,
+    onBefore: () => {
+      if (form.tipo_cabecera === 'multimedia' && !form.header_file) {
+        form.errors.header_file = 'Debes seleccionar un archivo multimedia'
+        return false
+      }
+      headerPreviewUrl.value = ''
+    }
   })
-};
+}
 
 const horaActual = ref('')
 
@@ -196,6 +229,23 @@ const onNombreInput = (e) => {
   form.nombre = e.target.value
     .toLowerCase()             
     .replace(/[^a-z0-9_]/g, '')
+}
+
+const headerFile = ref(null)
+const headerPreviewUrl = ref('')
+
+const onFileChange = (e) => {
+  const file = e.target.files[0]
+  if (!file) {
+    headerFile.value = null
+    headerPreviewUrl.value = ''
+    form.header_file = null
+    return
+  }
+
+  headerFile.value = file
+  form.header_file = file 
+  headerPreviewUrl.value = URL.createObjectURL(file)
 }
 
 actualizarHora()
@@ -341,11 +391,14 @@ setInterval(actualizarHora, 60000)
 
                               <Input
                                 id="fichero"
+                                ref="inputFile"
                                 type="file"
                                 :accept="acceptFileType"
                                 :disabled="!form.tipo_multimedia"
-                                class="w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                :key="form.tipo_multimedia"
+                                @change="onFileChange"
                               />
+                              <InputError class="mt-2" :message="form.errors.header_file" />
                           </div>
 
                           <div class="flex-1 space-y-1">
@@ -438,14 +491,28 @@ setInterval(actualizarHora, 60000)
                                 class="bg-white rounded-xl shadow-md p-4 w-[90%] sm:w-[75%] break-words text-sm relative"
                                 style="color: black;"
                               >
-                                <div v-if="showHeader && form.tipo_cabecera === 'texto'" class="font-bold mb-1">
+                                <!-- CABECERA: Texto -->
+                                <div v-if="showHeader && form.tipo_cabecera === 'texto'" class="font-bold mb-2">
                                   {{ form.texto_encabezado }}
                                 </div>
 
-                                <div class="whitespace-pre-wrap" v-html="formatWhatsappText(form.cuerpo)">
-                                 
+                                <!-- CABECERA: Multimedia -->
+                                <div v-if="showHeader && form.tipo_cabecera === 'multimedia'" class="mb-2">
+                                  <div v-if="form.tipo_multimedia === 'imagen' && headerPreviewUrl">
+                                    <img :src="headerPreviewUrl" alt="Imagen de encabezado" class="w-full rounded-md mb-2" />
+                                  </div>
+                                  <div v-else-if="form.tipo_multimedia === 'video' && headerPreviewUrl">
+                                    <video :src="headerPreviewUrl" controls class="w-full rounded-md mb-2"></video>
+                                  </div>
+                                  <div v-else-if="form.tipo_multimedia === 'documento' && headerPreviewUrl" class="flex items-center gap-2 text-sm text-gray-600">
+                                    📄 Documento cargado: {{ headerFile?.name }}
+                                  </div>
                                 </div>
 
+                                <!-- CUERPO -->
+                                <div class="whitespace-pre-wrap" v-html="formatWhatsappText(form.cuerpo)"></div>
+
+                                <!-- FOOTER -->
                                 <div v-if="form.pie_pagina" class="mt-2 text-xs text-gray-500">
                                   {{ form.pie_pagina }}
                                 </div>
@@ -457,7 +524,6 @@ setInterval(actualizarHora, 60000)
                             </div>
                           </div>
                         </CardContent>
-
 
                     </Card>
                   </div>

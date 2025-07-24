@@ -84,6 +84,7 @@ class TemplateController extends Controller
             'tipo' => 'required|string|max:30',
             'cuerpo' => 'required|string|max:1024',
             'pie_pagina' => 'nullable|string|max:60',
+            'header_file' => 'nullable|file|mimes:jpg,jpeg,png,mp4,pdf|max:10240',
         ]);
 
         preg_match_all('/{{\d+}}/', $validated['cuerpo'], $matches);
@@ -94,13 +95,84 @@ class TemplateController extends Controller
             $examples[] = "Ejemplo $i";
         }
 
-        $components = [
-            [
-                "type" => "BODY",
-                "text" => $validated['cuerpo'],
-                "example" => [
-                    "body_text" => [$examples]
-                ]
+        $headerComponent = null;
+
+        if ($request->has('tipo_cabecera')) {
+            $tipoCabecera = $request->input('tipo_cabecera');
+
+            if ($tipoCabecera === 'texto') {
+                $texto = $request->input('texto_encabezado');
+                if ($texto) {
+                    $headerComponent = [
+                        "type" => "HEADER",
+                        "format" => "TEXT",
+                        "text" => $texto,
+                        "example" => [
+                            "header_text" => ["Talina"]
+                        ]
+                    ];
+                }
+            }
+
+            if ($tipoCabecera === 'multimedia' && $request->hasFile('header_file')) {
+
+                /*dd([
+                    'has_header_file' => $request->hasFile('header_file'),
+                    'file' => $request->file('header_file'),
+                    'all_files' => $request->allFiles(),
+                ]);*/
+
+                $file = $request->file('header_file');
+                $extension = $file->getClientOriginalExtension();
+                $format = null;
+                $folder = null;
+
+                switch (strtolower($request->input('tipo_multimedia'))) {
+                    case 'imagen':
+                        $format = 'IMAGE';
+                        $folder = 'img';
+                        break;
+                    case 'video':
+                        $format = 'VIDEO';
+                        $folder = 'video';
+                        break;
+                    case 'documento':
+                        $format = 'DOCUMENT';
+                        $folder = 'pdf';
+                        break;
+                }
+
+                if ($format && $folder) {
+                    $fileName = uniqid('header_') . '.' . $extension;
+                    $filePath = "hsm/{$folder}/{$fileName}";
+                    $file->move(public_path("hsm/{$folder}"), $fileName);
+                    $url = "https://portal.fortelcorp.com/{$filePath}";
+
+                    $headerComponent = [
+                        "type" => "HEADER",
+                        "format" => $format,
+                        "example" => [
+                            "header_handle" => [$url]
+                        ]
+                    ];
+
+                    $absolutePath = public_path("hsm/{$folder}/{$fileName}");
+                    \Log::info("Archivo guardado en: {$absolutePath}");
+                }
+            }
+        }
+
+        $components = [];
+
+        if ($headerComponent) {
+            $components[] = $headerComponent;
+        }
+
+        $components[] = [
+            "type" => "BODY",
+            "text" => $validated['cuerpo'],
+            "example" => [
+                "body_text" => [$examples]
             ]
         ];
 
@@ -122,7 +194,7 @@ class TemplateController extends Controller
             ]
         ];
 
-        $response = Http::withOptions([
+        /*$response = Http::withOptions([
             'verify' => false,
         ])->post(env('WHATSAPP_NEW_URL'), $payload);
 
@@ -130,7 +202,12 @@ class TemplateController extends Controller
             return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
         } else {
             return back()->withErrors(['api' => 'Error al crear plantilla: ' . $response->body()]);
-        }
+        }*/
+            
+       dd([
+            'ruta_local' => $absolutePath ?? null,
+            'payload' => $payload
+        ]);
     }
  
 }
