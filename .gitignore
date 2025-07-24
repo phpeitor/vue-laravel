@@ -9,7 +9,7 @@
 /vendor
 .env
 .env.backup
-.env.production
+
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -22,3 +22,11 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+.idea
+.vscode
+*.log
+
+
+# Archivos específicos por entorno
+vite.config.js
+resources/js/echo.js
