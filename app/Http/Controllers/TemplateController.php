@@ -195,7 +195,7 @@ class TemplateController extends Controller
 
         $responseData = $response->json();
 
-        /*if ($response->successful() && isset($responseData['success']) && $responseData['success'] === true) {
+        if ($response->successful() && isset($responseData['success']) && $responseData['success'] === true) {
             return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
         } else {
             $errorMessage = $responseData['message'] ?? 'Error desconocido al crear plantilla';
@@ -211,12 +211,12 @@ class TemplateController extends Controller
 
             \Log::error("Error al crear plantilla: " . $errorMessage);
             return back()->withErrors(['api' => 'Error al crear plantilla: ' . $errorMessage]);
-        }*/
+        }
             
-       dd([
+       /*dd([
             'ruta_local' => $absolutePath ?? null,
             'payload' => $payload
-        ]);
+        ]);*/
     }
  
 }
