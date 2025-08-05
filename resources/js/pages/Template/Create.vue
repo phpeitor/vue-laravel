@@ -17,7 +17,41 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { ref, watch, computed  } from 'vue'
+import EmojiPicker from 'vue3-emoji-picker'
+import 'vue3-emoji-picker/css'
+import { ref, nextTick, watch, computed  } from 'vue'
+
+const queryParams = new URLSearchParams(window.location.search)
+const companyId = Number(queryParams.get('companyId'))
+const communicationChannelId = Number(queryParams.get('communicationChannelId'))
+
+const showEmojiPicker = ref(false)
+const textareaEl = ref(null)
+
+const toggleEmojiPicker = () => {
+  showEmojiPicker.value = !showEmojiPicker.value
+}
+
+const addEmoji = (emoji) => {
+  const emojiChar = emoji.i
+
+  const el = textareaEl.value?.textareaRef
+
+  if (!el) return
+
+  const pos = el.selectionStart ?? form.cuerpo.length
+  const start = form.cuerpo.slice(0, pos)
+  const end = form.cuerpo.slice(pos)
+
+  form.cuerpo = `${start}${emojiChar}${end}`
+
+  nextTick(() => {
+    el.focus()
+    el.selectionStart = el.selectionEnd = pos + emojiChar.length
+  })
+
+  showEmojiPicker.value = false
+}
 
 const showHeader = ref(false)
 
@@ -40,7 +74,8 @@ const form = useForm({
   texto_encabezado: "",
   tipo_multimedia: "", 
   cuerpo: "", 
-  pie_pagina: ""
+  pie_pagina: "",
+  header_file: null,
 })
 
 const acceptFileType = computed(() => {
@@ -56,23 +91,58 @@ const acceptFileType = computed(() => {
   }
 })
 
+const inputFile = ref(null)
+
+watch(() => form.tipo_multimedia, () => {
+  headerFile.value = null
+  headerPreviewUrl.value = ''
+
+  nextTick(() => {
+    setTimeout(() => {
+      const input = inputFile.value?.input || inputFile.value?.$el || inputFile.value
+
+      if (input && input instanceof HTMLInputElement) {
+        input.value = ''
+      } else if (input?.querySelector) {
+        const fileInput = input.querySelector('input[type="file"]')
+        if (fileInput) fileInput.value = ''
+      }
+    }, 10) 
+  })
+})
+
 watch(() => form.tipo_cabecera, (value) => {
   if (value === 'texto') {
     form.tipo_multimedia = ''
+    headerFile.value = null
+    headerPreviewUrl.value = ''
   } else if (value === 'multimedia') {
     form.texto_encabezado = ''
   } else {
     form.texto_encabezado = ''
     form.tipo_multimedia = ''
+    headerFile.value = null
+    headerPreviewUrl.value = ''
   }
 })
 
+watch(() => form.cuerpo, (text) => {
+   normalizeVariables()
+})
 
 const submit = () => {
-    form.post(route("templates.store"), {
-        preserveScroll: true,
-    });
-};
+  form.post(route("templates.store") + `?companyId=${companyId}&communicationChannelId=${communicationChannelId}`, {
+    preserveScroll: true,
+    forceFormData: true,
+    onBefore: () => {
+      if (form.tipo_cabecera === 'multimedia' && !form.header_file) {
+        form.errors.header_file = 'Debes seleccionar un archivo multimedia'
+        return false
+      }
+      headerPreviewUrl.value = ''
+    }
+  })
+}
 
 const horaActual = ref('')
 
@@ -81,6 +151,101 @@ const actualizarHora = () => {
   const horas = ahora.getHours().toString().padStart(2, '0')
   const minutos = ahora.getMinutes().toString().padStart(2, '0')
   horaActual.value = `${horas}:${minutos}`
+}
+
+const formatWhatsappText = (text) => {
+  if (!text) return '';
+
+  return text
+    .replace(/\*(.*?)\*/g, '<strong>$1</strong>')     
+    .replace(/_(.*?)_/g, '<em>$1</em>')                
+    .replace(/~(.*?)~/g, '<s>$1</s>');                 
+}
+
+const normalizeVariables = () => {
+  const el = textareaEl.value?.textareaRef
+  if (!el) return
+
+  const text = form.cuerpo
+  const matches = [...text.matchAll(/{{\d+}}/g)]
+  if (!matches.length) return
+
+  const cursorStart = el.selectionStart
+  const cursorEnd = el.selectionEnd
+
+  let index = 1
+  let replaced = text
+  const seen = new Set()
+
+  for (const match of matches) {
+    const original = match[0]
+    if (seen.has(original)) continue
+    replaced = replaced.replaceAll(original, `{{${index}}}`)
+    seen.add(original)
+    index++
+  }
+
+  if (replaced !== text) {
+    form.cuerpo = replaced
+
+    nextTick(() => {
+      if (el) {
+        el.focus()
+        el.selectionStart = cursorStart
+        el.selectionEnd = cursorEnd
+      }
+    })
+  }
+}
+
+const addVariable = () => {
+  const el = textareaEl.value?.textareaRef
+  if (!el) return
+
+  const matches = [...form.cuerpo.matchAll(/{{(\d+)}}/g)]
+  const used = matches.map(m => parseInt(m[1]))
+  const sorted = used.sort((a, b) => a - b)
+
+  let next = 1
+  for (const num of sorted) {
+    if (num !== next) break
+    next++
+  }
+
+  const token = `{{${next}}}`
+  const pos = el.selectionStart ?? form.cuerpo.length
+  const start = form.cuerpo.slice(0, pos)
+  const end = form.cuerpo.slice(pos)
+
+  form.cuerpo = `${start}${token}${end}`
+
+  nextTick(() => {
+    el.focus()
+    el.selectionStart = el.selectionEnd = pos + token.length
+  })
+}
+
+const onNombreInput = (e) => {
+  form.nombre = e.target.value
+    .toLowerCase()             
+    .replace(/[^a-z0-9_]/g, '')
+}
+
+const headerFile = ref(null)
+const headerPreviewUrl = ref('')
+
+const onFileChange = (e) => {
+  const file = e.target.files[0]
+  if (!file) {
+    headerFile.value = null
+    headerPreviewUrl.value = ''
+    form.header_file = null
+    return
+  }
+
+  headerFile.value = file
+  form.header_file = file 
+  headerPreviewUrl.value = URL.createObjectURL(file)
 }
 
 actualizarHora()
@@ -115,9 +280,9 @@ setInterval(actualizarHora, 60000)
                       :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.categoria }"
                     >
                       <option value="">Seleccione categoría</option>
-                      <option value="marketing">Marketing</option>
-                      <option value="utilidad">Utilidad</option>
-                      <option value="autenticacion">Autenticación</option>
+                      <option value="MARKETING">Marketing</option>
+                      <option value="UTILITY">Utilidad</option>
+                      <option value="AUTHENTICATION">Autenticación</option>
                     </select>
                     <InputError class="mt-2" :message="form.errors.categoria" />
                   </div>
@@ -126,8 +291,10 @@ setInterval(actualizarHora, 60000)
                     <label for="nombre" class="block text-sm font-medium text-foreground">Nombre</label>
                     <input
                       v-model="form.nombre"
+                      @input="onNombreInput"
                       type="text"
                       id="nombre"
+                      :maxlength="100"
                       class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
                       :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.nombre }"
                     />
@@ -224,11 +391,14 @@ setInterval(actualizarHora, 60000)
 
                               <Input
                                 id="fichero"
+                                ref="inputFile"
                                 type="file"
                                 :accept="acceptFileType"
                                 :disabled="!form.tipo_multimedia"
-                                class="w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                :key="form.tipo_multimedia"
+                                @change="onFileChange"
                               />
+                              <InputError class="mt-2" :message="form.errors.header_file" />
                           </div>
 
                           <div class="flex-1 space-y-1">
@@ -238,10 +408,44 @@ setInterval(actualizarHora, 60000)
                               <p class="text-sm text-muted-foreground">
                                 Introduce el texto de tu mensaje en el idioma que has seleccionado
                               </p>
-                              <Textarea v-model="form.cuerpo"
-                                :maxlength="1024"
-                                class="resize-none"
-                              />
+
+                              <div class="flex flex-col gap-2 relative">
+                                <Textarea
+                                  v-model="form.cuerpo"
+                                  :maxlength="1024"
+                                  ref="textareaEl"
+                                  class="min-h-[10rem] resize-none"
+                                  placeholder="Escribe tu mensaje aquí"
+                                />
+                                <InputError class="mt-2" :message="form.errors.cuerpo" />
+
+                                <button
+                                  type="button"
+                                  @click="addVariable"
+                                  class="absolute bottom-12 right-2 bg-muted rounded px-2 py-1 text-xs hover:bg-muted/70"
+                                  title="Añadir variable"
+                                >
+                                  + variable
+                                </button>
+
+                                <button
+                                  type="button"
+                                  @click="toggleEmojiPicker"
+                                  class="absolute bottom-2 right-2 bg-muted rounded-full p-1 hover:bg-muted/70"
+                                  title="Insertar emoji"
+                                >
+                                  😊
+                                </button>
+
+                                <div
+                                  v-if="showEmojiPicker"
+                                  class="absolute bottom-14 right-0 z-50"
+                                >
+                                  
+                                  <EmojiPicker @select="addEmoji" :native="true" />
+                                </div>
+
+                              </div>
                           </div>
                         </CardContent>
                         <CardFooter>
@@ -279,32 +483,40 @@ setInterval(actualizarHora, 60000)
                         
                         <CardContent class="flex justify-start">
                           <div class="relative w-[450px]">
-                            <!-- Imagen de fondo adaptativa -->
                             <div
                               class="rounded-md bg-cover bg-center w-full min-h-[200px] bg-no-repeat p-4"
                               :style="{ backgroundImage: 'url(/img/template.jpeg)' }"
                             >
-                              <!-- Globo del mensaje -->
                               <div
                                 class="bg-white rounded-xl shadow-md p-4 w-[90%] sm:w-[75%] break-words text-sm relative"
                                 style="color: black;"
                               >
-                                <!-- Encabezado -->
-                                <div v-if="showHeader && form.tipo_cabecera === 'texto'" class="font-bold mb-1">
+                                <!-- CABECERA: Texto -->
+                                <div v-if="showHeader && form.tipo_cabecera === 'texto'" class="font-bold mb-2">
                                   {{ form.texto_encabezado }}
                                 </div>
 
-                                <!-- Cuerpo -->
-                                <div class="whitespace-pre-wrap">
-                                  {{ form.cuerpo }}
+                                <!-- CABECERA: Multimedia -->
+                                <div v-if="showHeader && form.tipo_cabecera === 'multimedia'" class="mb-2">
+                                  <div v-if="form.tipo_multimedia === 'imagen' && headerPreviewUrl">
+                                    <img :src="headerPreviewUrl" alt="Imagen de encabezado" class="w-full rounded-md mb-2" />
+                                  </div>
+                                  <div v-else-if="form.tipo_multimedia === 'video' && headerPreviewUrl">
+                                    <video :src="headerPreviewUrl" controls class="w-full rounded-md mb-2"></video>
+                                  </div>
+                                  <div v-else-if="form.tipo_multimedia === 'documento' && headerPreviewUrl" class="flex items-center gap-2 text-sm text-gray-600">
+                                    📄 Documento cargado: {{ headerFile?.name }}
+                                  </div>
                                 </div>
 
-                                <!-- Pié de página -->
+                                <!-- CUERPO -->
+                                <div class="whitespace-pre-wrap" v-html="formatWhatsappText(form.cuerpo)"></div>
+
+                                <!-- FOOTER -->
                                 <div v-if="form.pie_pagina" class="mt-2 text-xs text-gray-500">
                                   {{ form.pie_pagina }}
                                 </div>
 
-                                <!-- Hora -->
                                 <div class="mt-2 text-xs text-gray-400 text-right">
                                   {{ horaActual }}
                                 </div>
@@ -312,7 +524,6 @@ setInterval(actualizarHora, 60000)
                             </div>
                           </div>
                         </CardContent>
-
 
                     </Card>
                   </div>
@@ -327,6 +538,10 @@ setInterval(actualizarHora, 60000)
 
                 <button type="submit" class="bg-primary text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors px-4 py-2 rounded-md text-sm font-medium"
                 > Enviar </button>
+
+                <div v-if="form.errors.api" class="text-red-600 mt-2">
+                  {{ form.errors.api }}
+                </div>
 
               </div>
             </div>

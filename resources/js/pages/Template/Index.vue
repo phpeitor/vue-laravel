@@ -19,6 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/components/ui/tooltip'
+
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
@@ -79,10 +86,10 @@ const columns = [
     cell: ({ row }) => h('span', row.getValue('category')),
   },
   {
-    accessorKey: 'metaStatus',
+    accessorKey: 'meta_status',
     header: 'Estado',
     cell: ({ row }) => {
-      const status = row.getValue('metaStatus')
+      const status = row.getValue('meta_status')
       const statusClass = {
         APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
         REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
@@ -207,6 +214,20 @@ const table = useVueTable({
   onPaginationChange: (val) =>
     (pagination.value = typeof val === 'function' ? val(pagination.value) : val),
 })
+
+function goToCreate() {
+  if (!companyId.value || !channelId.value) {
+    alert('Seleccione una compañía y un canal antes de continuar.');
+    return;
+  }
+
+  const url = route('templates.create', {
+    communicationChannelId: channelId.value,
+    companyId: companyId.value,
+  });
+
+  router.visit(url);
+}
 </script>
 
 <template>
@@ -218,9 +239,24 @@ const table = useVueTable({
           <div class="sm:flex-auto">
             <div class="flex items-center gap-2">
               <h1 class="text-xl font-semibold text-foreground">Plantillas de Comunicación</h1>
-              <Button variant="outline" class="h-7 w-7 p-0">
-                <ChevronRight class="w-3 h-3" />
-              </Button>
+              
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      variant="outline"
+                      class="h-7 w-7 p-0"
+                      @click="goToCreate"
+                    >
+                      <ChevronRight class="w-3 h-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center">
+                    <span>Crear</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
             </div>
           </div>
 

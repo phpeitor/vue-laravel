@@ -6,6 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Inertia\Inertia;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -33,11 +34,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
        
-        $exceptions->renderable(function (\Illuminate\Auth\Access\AuthorizationException $e, $request) {
-            if ($request->header('X-Inertia')) {
+        $exceptions->renderable(function (Throwable $e, $request) {
+            if (
+                $e instanceof \Illuminate\Auth\Access\AuthorizationException ||
+                ($e instanceof HttpException && $e->getStatusCode() === 403)
+            ){
                 return Inertia::location(route('error.403'));
             }
-    
-            return response()->view('errors.403', [], 403);
         });
     })->create();

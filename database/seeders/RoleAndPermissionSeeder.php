@@ -17,6 +17,7 @@ class RoleAndPermissionSeeder extends Seeder
             'delete user',
             'add user',
             'templates',
+            'add template',
         ];
 
         foreach ($permissions as $permission) {
@@ -32,6 +33,7 @@ class RoleAndPermissionSeeder extends Seeder
             'delete user',
             'add user',
             'templates',
+            'add template',
         ]);
 
         $user->syncPermissions([

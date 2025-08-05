@@ -29,8 +29,22 @@ const props = withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
 
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    email_verified_at: string | null;
+    created_at: string;
+    updated_at: string;
+    avatar?: string;
+}
+
+interface AuthProps {
+    user: User;
+}
+
 const page = usePage();
-const auth = computed(() => page.props.auth);
+const auth = computed(() => page.props.auth as AuthProps);
 
 const isCurrentRoute = computed(() => (url: string) => page.url === url);
 
