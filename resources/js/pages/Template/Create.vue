@@ -539,6 +539,10 @@ setInterval(actualizarHora, 60000)
                 <button type="submit" class="bg-primary text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors px-4 py-2 rounded-md text-sm font-medium"
                 > Enviar </button>
 
+                <div v-if="form.errors.api" class="text-red-600 mt-2">
+                  {{ form.errors.api }}
+                </div>
+
               </div>
             </div>
           </form>

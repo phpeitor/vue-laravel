@@ -116,12 +116,6 @@ class TemplateController extends Controller
 
             if ($tipoCabecera === 'multimedia' && $request->hasFile('header_file')) {
 
-                /*dd([
-                    'has_header_file' => $request->hasFile('header_file'),
-                    'file' => $request->file('header_file'),
-                    'all_files' => $request->allFiles(),
-                ]);*/
-
                 $file = $request->file('header_file');
                 $extension = $file->getClientOriginalExtension();
                 $format = null;
@@ -146,7 +140,8 @@ class TemplateController extends Controller
                     $fileName = uniqid('header_') . '.' . $extension;
                     $filePath = "hsm/{$folder}/{$fileName}";
                     $file->move(public_path("hsm/{$folder}"), $fileName);
-                    $url = "https://portal.fortelcorp.com/{$filePath}";
+                    //$url = "https://portal.fortelcorp.com/{$filePath}";
+                    $url = "https://portal.fortelcorp.com/metadata/images/flex_fortel/logo_h.png";
 
                     $headerComponent = [
                         "type" => "HEADER",
@@ -194,14 +189,28 @@ class TemplateController extends Controller
             ]
         ];
 
-        /*$response = Http::withOptions([
+        $response = Http::withOptions([
             'verify' => false,
         ])->post(env('WHATSAPP_NEW_URL'), $payload);
 
-        if ($response->successful()) {
+        $responseData = $response->json();
+
+        /*if ($response->successful() && isset($responseData['success']) && $responseData['success'] === true) {
             return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
         } else {
-            return back()->withErrors(['api' => 'Error al crear plantilla: ' . $response->body()]);
+            $errorMessage = $responseData['message'] ?? 'Error desconocido al crear plantilla';
+
+            if (is_string($errorMessage) && str_starts_with($errorMessage, '{')) {
+                $decoded = json_decode($errorMessage, true);
+                if (isset($decoded['error']['error_user_msg'])) {
+                    $errorMessage = $decoded['error']['error_user_msg'];
+                } elseif (isset($decoded['error']['message'])) {
+                    $errorMessage = $decoded['error']['message'];
+                }
+            }
+
+            \Log::error("Error al crear plantilla: " . $errorMessage);
+            return back()->withErrors(['api' => 'Error al crear plantilla: ' . $errorMessage]);
         }*/
             
        dd([
