@@ -22,7 +22,6 @@ class TemplateController extends Controller
         
         $companyId = $request->input('companyId');
         $communicationChannelId = $request->input('communicationChannelId');
-
         $templates = [];
         $channels = [];
         $errorMessage = null;
@@ -36,17 +35,26 @@ class TemplateController extends Controller
                 ->toArray();
 
             if ($communicationChannelId) {            
-                $templates = DB::table('message_templates')
-                ->where('company_id', $companyId)
-                ->where('communication_channel_id', $communicationChannelId)
-                ->select('id', 'name', 'category', 'components', 'meta_status')
-                ->orderBy('id', 'desc')
-                ->get()
-                ->map(function ($template) {
-                    $template->components = json_decode($template->components, true);
-                    return $template;
-                })
-                ->toArray();
+                $templates = DB::table('message_templates as a')
+                    ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.hsm_id') 
+                    ->where('a.company_id', $companyId)
+                    ->where('a.communication_channel_id', $communicationChannelId)
+                    ->where('a.status', 'ACTIVO')
+                    ->select(
+                        'a.id',
+                        'a.name',
+                        'a.category',
+                        'a.components',
+                        'a.meta_status',
+                        'b.url'
+                    )
+                    ->orderBy('a.id', 'desc')
+                    ->get()
+                    ->map(function ($template) {
+                        $template->components = json_decode($template->components, true);
+                        return $template;
+                    })
+                    ->toArray();
             }
         }
 
@@ -58,7 +66,6 @@ class TemplateController extends Controller
             'selectedChannelId' => $communicationChannelId ? (int) $communicationChannelId : null,
             'errorMessage' => $errorMessage,
         ]);
-       
     }
 
     public function create()
@@ -96,6 +103,7 @@ class TemplateController extends Controller
         }
 
         $headerComponent = null;
+        $url = null; 
 
         if ($request->has('tipo_cabecera')) {
             $tipoCabecera = $request->input('tipo_cabecera');
@@ -115,7 +123,6 @@ class TemplateController extends Controller
             }
 
             if ($tipoCabecera === 'multimedia' && $request->hasFile('header_file')) {
-
                 $file = $request->file('header_file');
                 $extension = $file->getClientOriginalExtension();
                 $format = null;
@@ -124,14 +131,17 @@ class TemplateController extends Controller
                 switch (strtolower($request->input('tipo_multimedia'))) {
                     case 'imagen':
                         $format = 'IMAGE';
+                        $url = "https://talina.xyz/hsm/img/laravel.jpg"; 
                         $folder = 'img';
                         break;
                     case 'video':
                         $format = 'VIDEO';
+                        $url = "https://talina.xyz/video/imperia.mp4";
                         $folder = 'video';
                         break;
                     case 'documento':
                         $format = 'DOCUMENT';
+                        $url = "https://talina.xyz/hsm/pdf/moca.pdf";
                         $folder = 'pdf';
                         break;
                 }
@@ -140,8 +150,7 @@ class TemplateController extends Controller
                     $fileName = uniqid('header_') . '.' . $extension;
                     $filePath = "hsm/{$folder}/{$fileName}";
                     $file->move(public_path("hsm/{$folder}"), $fileName);
-                    //$url = "https://portal.fortelcorp.com/{$filePath}";
-                    $url = "https://portal.fortelcorp.com/metadata/images/flex_fortel/logo_h.png";
+                    //$url = "https://talina.xyz/{$filePath}";
 
                     $headerComponent = [
                         "type" => "HEADER",
@@ -189,6 +198,12 @@ class TemplateController extends Controller
             ]
         ];
 
+        /*dd([
+            'ruta_local' => $absolutePath ?? null,
+            'url_header_manual' => $url, 
+            'payload' => $payload
+        ]);*/
+
         $response = Http::withOptions([
             'verify' => false,
         ])->post(env('WHATSAPP_NEW_URL'), $payload);
@@ -196,6 +211,23 @@ class TemplateController extends Controller
         $responseData = $response->json();
 
         if ($response->successful() && isset($responseData['success']) && $responseData['success'] === true) {
+            $hsmId = $responseData['id'] ?? null;
+            if ($url) {
+
+                /*dd([
+                    'payload_enviado_api'  => $payload,
+                    'response_data_api'    => $responseData
+                ]);*/
+
+                DB::table('template_url_laravel')->insert([
+                    'name' => $validated['nombre'],
+                    'company_id' => $companyId,
+                    'channel_id' => $communicationChannelId,
+                    'url' => $url,
+                    'hsm_id' => $hsmId,
+                ]);
+            }
+
             return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
         } else {
             $errorMessage = $responseData['message'] ?? 'Error desconocido al crear plantilla';
@@ -213,10 +245,124 @@ class TemplateController extends Controller
             return back()->withErrors(['api' => 'Error al crear plantilla: ' . $errorMessage]);
         }
             
-       /*dd([
-            'ruta_local' => $absolutePath ?? null,
-            'payload' => $payload
-        ]);*/
     }
- 
+
+    public function destroy(Request $request, $id)
+    {
+        $template = DB::table('message_templates')->where('id', $id)->first();
+
+        if (!$template) {
+            return redirect()->back()->withErrors(['error' => 'Plantilla no encontrada']);
+        }
+
+        DB::table('message_templates')
+            ->where('id', $id)
+            ->update(['status' => 'DELETE']);
+
+        $companyId = $request->query('companyId');
+        $communicationChannelId = $request->query('communicationChannelId');
+
+        return redirect()->route('templates.index', [
+            'companyId' => $companyId,
+            'communicationChannelId' => $communicationChannelId,
+        ])->with('success', 'Plantilla eliminada exitosamente');
+        //return response()->json(['message' => 'Plantilla marcada como eliminada'], 200);
+    }
+
+    public function testSend(Request $request)
+    {
+        $validated = $request->validate([
+            'companyId' => 'required|integer',
+            'communicationChannelId' => 'required|integer',
+            'messageTemplateId' => 'required|integer|exists:message_templates,id',
+            'recipientData.phone' => 'required|string|size:11', 
+            'recipientData.templateBody' => 'required|array',
+            'recipientData.templateHeader' => 'nullable|array',
+            'recipientData.templateHeader.type' => 'nullable|string|in:image,video,document',
+            'recipientData.templateHeader.variable' => 'nullable|string',
+        ]);
+
+        $recipientData = $validated['recipientData'];
+
+        if (isset($recipientData['templateHeader'])) {
+            $recipientData['templateHeader'] = [
+                'type' => strtolower($recipientData['templateHeader']['type']),
+                'variable' => $recipientData['templateHeader']['variable'],
+            ];
+        }
+
+        $payload = [
+            'companyId' => $validated['companyId'],
+            'communicationChannelId' => $validated['communicationChannelId'],
+            'messageTemplateId' => $validated['messageTemplateId'],
+            'recipientData' => $recipientData,
+        ];
+
+        try {  
+            $response = Http::withOptions([
+                'verify' => false,
+            ])->post(env('WHATSAPP_SEND_URL'), $payload);
+
+            $responseData = $response->json();
+
+            $hsmId = $responseData['hsmid'] ?? null;
+            $success = $response->successful() && ($responseData['success'] ?? false) === true;
+
+            /*dd([
+            'payload' => $payload,
+            'response_status' => $response->status(),
+            'response_data' => $responseData
+            ]);*/
+            
+
+            DB::table('hsm_laravel')->insert([
+                'id_template' => $validated['messageTemplateId'],
+                'telefono' => $validated['recipientData']['phone'],
+                'hsm_id' => $hsmId,
+                'success' => $success ? 1 : 0,
+            ]);
+
+            if ($success) {
+                return redirect()->route('templates.index', [
+                    'companyId' => $validated['companyId'],
+                    'communicationChannelId' => $validated['communicationChannelId'],
+                ])->with('success', 'Mensaje enviado correctamente.');
+            }
+
+            $errorMessage = 'Error desconocido al enviar.';
+
+            if (isset($responseData['message'])) {
+                $rawMessage = $responseData['message'];
+
+                if (is_string($rawMessage) && str_starts_with($rawMessage, '{')) {
+                    $decoded = json_decode($rawMessage, true);
+
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        if (isset($decoded['error']['error_user_msg'])) {
+                            $errorMessage = $decoded['error']['error_user_msg'];
+                        } elseif (isset($decoded['error']['message'])) {
+                            $errorMessage = $decoded['error']['message'];
+                        } else {
+                            $errorMessage = $rawMessage;
+                        }
+                    } else {
+                        $errorMessage = $rawMessage;
+                    }
+                } else {
+                    $errorMessage = $rawMessage;
+                }
+            }
+
+            return back()->withErrors([
+                'toast' => $errorMessage
+            ]);
+
+
+        } catch (\Exception $e) {
+            \Log::error('Error al enviar prueba de plantilla: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al conectarse con el API.');
+        }
+    }
+
+
 }
