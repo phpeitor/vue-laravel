@@ -1,8 +1,32 @@
 <script setup>
 import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
 import AuthenticatedLayout from '@/layouts/AuthenticatedLayout.vue'
-import { Head, Link, router  } from '@inertiajs/vue3'
+import { Trash2, FlaskConical, Send, Phone } from 'lucide-vue-next'
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import { h, ref, watch } from 'vue'
+import { useToast } from '@/components/ui/toast'
+import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction
+} from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose
+} from '@/components/ui/dialog'
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -54,6 +78,8 @@ const props = defineProps({
   },
 })
 
+const { toast } = useToast()
+const page = usePage()
 const companyId = ref(props.selectedCompanyId || null)
 const channelId = ref(props.selectedChannelId || null)
 const globalFilter = ref('');
@@ -93,6 +119,7 @@ const columns = [
       const statusClass = {
         APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
         REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+        PENDING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
       }[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
 
       return h('span', {
@@ -124,13 +151,33 @@ const columns = [
       // HEADER
       const header = typeMap.HEADER;
       if (header) {
-        if (header.format === 'IMAGE') {
-          const url = header.example?.header_handle?.[0] ?? '';
+        const url = header.example?.header_handle?.[0] ?? '';
+
+        if (!url.includes('.') && header.format) {
+          children.push(
+            h(Badge, { variant: 'secondary', class: 'mb-2' }, () => `Header ${header.format}`)
+          )
+        }else if (header.format === 'IMAGE' ) {
           children.push(
             h('img', {
               src: url,
               alt: 'Header Image',
               class: 'rounded-md mx-auto max-h-40 object-cover mb-2',
+            })
+          );
+        } else if (header.format === 'VIDEO' ) {
+          children.push(
+            h('video', {
+              src: url,
+              controls: true,
+              class: 'rounded-md mx-auto max-h-40 mb-2',
+            })
+          );
+        } else if (header.format === 'DOCUMENT' ) {
+          children.push(
+            h('iframe', {
+              src: url,
+              class: 'rounded-md mx-auto w-full h-30 mb-2 border',
             })
           );
         } else {
@@ -145,16 +192,12 @@ const columns = [
       // BODY
       const body = typeMap.BODY;
       if (body) {
-        const values = body.example?.body_text?.[0] ?? [];
-        let formatted = body.text || '';
-        values.forEach((v, i) => {
-          formatted = formatted.replace(`{{${i + 1}}}`, v);
-        });
-
+        const formattedText = (body.text || '').replace(/({{\d+}})/g, '<strong>$1</strong>');
         children.push(
           h('p', {
             class: 'text-sm text-muted-foreground mb-1 whitespace-pre-wrap',
-          }, formatted)
+            innerHTML: formattedText
+          })
         );
       }
 
@@ -187,6 +230,74 @@ const columns = [
         class: 'p-3 rounded-xl border shadow-sm bg-muted text-left',
       }, children);
     },
+  },
+  {
+    id: 'acciones',
+    header: 'Acciones',
+    cell: ({ row }) => {
+      const templateId = row.original.id
+      const isApproved = row.original.meta_status === 'APPROVED'
+
+      const acciones = [
+        h(TooltipProvider, {}, {
+          default: () => h(Tooltip, {}, {
+            default: () => [
+              h(TooltipTrigger, { asChild: true }, () =>
+                h(Button, {
+                  variant: 'ghost',
+                  size: 'icon',
+                  class: 'h-8 w-8',
+                  onClick: () => confirmDeleteTemplate(templateId),
+                }, () => h(Trash2, { class: 'h-4 w-4 text-red-500' }))
+              ),
+              h(TooltipContent, { side: 'top' }, () => 'Eliminar')
+            ]
+          })
+        })
+      ]
+
+      if (isApproved) {
+        // Botón Test
+        acciones.push(
+          h(TooltipProvider, {}, {
+            default: () => h(Tooltip, {}, {
+              default: () => [
+                h(TooltipTrigger, { asChild: true }, () =>
+                  h(Button, {
+                    variant: 'ghost',
+                    size: 'icon',
+                    class: 'h-8 w-8',
+                    onClick: () => openTestTemplateDialog(templateId),
+                  }, () => h(FlaskConical, { class: 'h-4 w-4 text-yellow-500' }))
+                ),
+                h(TooltipContent, { side: 'top' }, () => 'Test')
+              ]
+            })
+          })
+        )
+
+        // Botón Campaña
+        acciones.push(
+          h(TooltipProvider, {}, {
+            default: () => h(Tooltip, {}, {
+              default: () => [
+                h(TooltipTrigger, { asChild: true }, () =>
+                  h(Button, {
+                    variant: 'ghost',
+                    size: 'icon',
+                    class: 'h-8 w-8',
+                    onClick: () => asignarCampania(templateId),
+                  }, () => h(Send, { class: 'h-4 w-4 text-blue-500' }))
+                ),
+                h(TooltipContent, { side: 'top' }, () => 'Campaña')
+              ]
+            })
+          })
+        )
+      }
+
+      return h('div', { class: 'flex gap-2' }, acciones)
+    }
   }
 ]
 
@@ -215,6 +326,17 @@ const table = useVueTable({
     (pagination.value = typeof val === 'function' ? val(pagination.value) : val),
 })
 
+/*const form = useForm({
+  companyId: Number(companyId.value),
+  communicationChannelId: Number(channelId.value),
+  messageTemplateId: null,
+  recipientData: {
+    phone: '',
+    templateBody: []
+  }
+})
+*/
+
 function goToCreate() {
   if (!companyId.value || !channelId.value) {
     alert('Seleccione una compañía y un canal antes de continuar.');
@@ -227,6 +349,187 @@ function goToCreate() {
   });
 
   router.visit(url);
+}
+
+const openDeleteDialog = ref(false)
+const templateToDelete = ref(null)
+
+function confirmDeleteTemplate(id) {
+  templateToDelete.value = id
+  openDeleteDialog.value = true
+}
+
+function eliminarTemplate() {
+  if (!templateToDelete.value) return;
+
+  router.visit(
+    route('templates.destroy', {
+      id: templateToDelete.value,
+      companyId: companyId.value,
+      communicationChannelId: channelId.value
+    }),
+    {
+      method: 'delete',
+      preserveScroll: true,
+      onSuccess: () => {
+        openDeleteDialog.value = false
+        templateToDelete.value = null
+      },
+      onError: (errors) => {
+        alert('Error al eliminar la plantilla')
+        console.error(errors)
+      }
+    }
+  )
+
+}
+
+const openTestDialog = ref(false)
+const testInputs = ref([])
+const testTemplate = ref(null)
+const telefonoDestino = ref('') 
+const loadingTest = ref(false)
+
+function openTestTemplateDialog(templateId) {
+  const template = props.templates.find(t => t.id === templateId)
+  if (!template) return
+
+  testTemplate.value = template
+  const body = (template.components || []).find(c => c.type === 'BODY')
+  const matches = body?.text.match(/{{\d+}}/g) || []
+
+  testInputs.value = matches.map((placeholder, i) => ({
+    key: placeholder,
+    value: ''
+  }))
+
+  console.log(testTemplate);
+
+  openTestDialog.value = true
+}
+
+function renderBodyWithInputs(text) {
+  let parts = text.split(/({{\d+}})/g)
+
+  return parts.map((part, index) => {
+    const matchIndex = testInputs.value.findIndex(p => p.key === part)
+    if (matchIndex !== -1) {
+      return h('input', {
+        type: 'text',
+        maxlength: 30,
+        class: 'border-0 border-b border-muted-foreground bg-transparent w-32 text-sm focus:outline-none focus:ring-0 focus:border-muted-foreground',
+        value: testInputs.value[matchIndex].value,
+        onInput: (e) => testInputs.value[matchIndex].value = e.target.value
+      })
+    }
+    return part
+  })
+}
+
+function handleTestSubmit() {
+  const valores = testInputs.value.map(i => i.value?.trim())
+
+  if (!testTemplate.value) {
+    toast({
+      title: 'Error inesperado',
+      description: 'No hay plantilla seleccionada',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  if (valores.some(v => !v)) {
+    toast({
+      title: 'Campos requeridos',
+      description: 'Por favor, completa todos los campos antes de continuar',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  if (!telefonoDestino.value || telefonoDestino.value.length !== 11) {
+    toast({
+      title: 'Número inválido',
+      description: 'Teléfono debe tener 11 dígitos',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  loadingTest.value = true
+
+  const headerComponent = (testTemplate.value.components || []).find(c => c.type === 'HEADER')
+  let templateHeader = null
+
+  if (headerComponent && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComponent.format)) {
+    //const url = headerComponent.example?.header_handle?.[0]
+    const url = testTemplate.value.url
+    if (url) {
+      templateHeader = {
+        type: headerComponent.format.toLowerCase(), 
+        variable: url
+      }
+    }
+  }
+
+  const payload = {
+    companyId: Number(companyId.value),
+    communicationChannelId: Number(channelId.value),
+    messageTemplateId: testTemplate.value.id,
+    recipientData: {
+      phone: telefonoDestino.value,
+      templateBody: valores,
+    }
+  }
+
+  if (templateHeader) {
+    payload.recipientData.templateHeader = templateHeader
+  }
+
+  router.post(route('templates.sendTest'), payload, {
+    preserveScroll: true,
+    onSuccess: () => {
+      if (page.props.flash.success) {
+        toast({
+          title: 'Exito',
+          description: page.props.flash.success,
+          variant: 'success',
+        })
+        openTestDialog.value = false
+      }
+    },
+    onError: (errors) => {
+      //console.log('🛑 errores recibidos', errors)
+
+      if (errors.toast || errors.general || errors.api) {
+        toast({
+          title: 'Error',
+          description: errors.toast || errors.general || errors.api,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Ocurrió un error inesperado',
+          variant: 'destructive',
+        })
+      }
+    },
+    onFinish: () => {
+      loadingTest.value = false
+    }
+  })
+
+}
+
+function asignarCampania(id) {
+  console.log('Asignar campaña a template', id)
+}
+
+function soloNumeros(e) {
+  if (!/[0-9]/.test(e.key)) {
+    e.preventDefault()
+  }
 }
 </script>
 
@@ -373,5 +676,108 @@ function goToCreate() {
         </div>
       </div>
     </div>
+
+    <AlertDialog v-model:open="openDeleteDialog">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Esta acción eliminará la plantilla seleccionada. Esta operación no se puede deshacer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction @click="eliminarTemplate">
+            Confirmar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <Dialog v-model:open="openTestDialog">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Test Template</DialogTitle>
+          <DialogDescription class="mb-2">
+            Simula el contenido con valores de prueba
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="border rounded-md p-4 bg-muted space-y-4">
+          <!-- HEADER -->
+          <div v-if="testTemplate">
+            <div v-for="component in testTemplate.components" :key="component.type">
+              <template v-if="component.type === 'HEADER'">
+                <div v-if="component.format === 'IMAGE'">
+                  <img
+                    :src="component.example?.header_handle?.[0]"
+                    alt="Header Image"
+                    class="rounded-md max-h-32 object-cover mb-2"
+                  />
+                </div>
+                <div v-else class="text-sm font-semibold mb-2">
+                  {{ component.text }}
+                </div>
+              </template>
+
+              <!-- BODY -->
+              <template v-if="component.type === 'BODY'">
+                <p class="text-sm text-muted-foreground whitespace-pre-wrap">
+                  <component :is="'span'" v-for="(node, i) in renderBodyWithInputs(component.text)" :key="i">
+                    <template v-if="typeof node === 'string'">{{ node }}</template>
+                    <template v-else><component :is="node" /></template>
+                  </component>
+                </p>
+              </template>
+
+              <!-- FOOTER -->
+              <template v-if="component.type === 'FOOTER'">
+                <p class="text-xs italic text-muted-foreground mt-2">{{ component.text }}</p>
+              </template>
+
+              <!-- BUTTONS -->
+              <template v-if="component.type === 'BUTTONS' && component.buttons?.length">
+                <div class="flex gap-2 mt-4">
+                  <button
+                    v-for="(btn, idx) in component.buttons"
+                    :key="idx"
+                    class="text-xs px-2 py-1 border rounded bg-background hover:bg-accent transition"
+                  >
+                    {{ btn.text }}
+                  </button>
+                </div>
+              </template>
+            </div>
+
+            <div class="mt-6 flex items-center gap-2">
+              <Phone class="w-4 h-4 text-muted-foreground" />
+              <input
+                v-model="telefonoDestino"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="11"
+                placeholder="Teléfono"
+                class="w-32 border-0 border-b border-muted-foreground rounded-none px-0 py-0.5 text-sm bg-transparent focus:outline-none focus:ring-0 focus:border-muted-foreground"
+                @input="e => telefonoDestino = e.target.value.replace(/\D/g, '')"
+                @keypress="soloNumeros"
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter class="mt-4">
+          <DialogClose as-child>
+            <Button variant="outline">Cancelar</Button>
+          </DialogClose>
+          <Button :disabled="loadingTest" @click="handleTestSubmit">
+            <template v-if="loadingTest">Enviando...</template>
+            <template v-else>Enviar</template>
+          </Button>
+        </DialogFooter>
+
+      </DialogContent>
+    </Dialog>
+
   </AuthenticatedLayout>
 </template>
