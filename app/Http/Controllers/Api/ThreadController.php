@@ -40,6 +40,8 @@ class ThreadController extends Controller
             'close_type' => $cliente->close_type,
             'sender_id' => $cliente->sender_id,
             'thread_status' => $cliente->thread_status,
+            'first_conversation_date' => $cliente->first_conversation_date,
+            'last_conversation_date' => $cliente->last_conversation_date,
             'total_duration' => $cliente->total_duration
         ];
 
