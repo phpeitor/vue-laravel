@@ -2,7 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\SectionController;
+use App\Http\Controllers\Api\ThreadController;
 use App\Http\Controllers\Api\EventPushController;
 
 Route::get('/user', function (Request $request) {
@@ -11,4 +11,4 @@ Route::get('/user', function (Request $request) {
 
 Route::post('/external-event', [EventPushController::class, 'push']);
 
-Route::get('sections', SectionController::class)->name('sections.index');
+Route::get('/threads/{id}', [ThreadController::class, 'show']);

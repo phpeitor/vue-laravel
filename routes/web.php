@@ -44,7 +44,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/error/403', fn () => Inertia::render('Errors/Error403'))->name('error.403');
     Route::delete('/templates/{id}', [TemplateController::class, 'destroy'])->name('templates.destroy');
-    Route::post('/template/send-test', [TemplateController::class, 'testSend'])->name('templates.sendTest');
+    Route::post('/templates/send-test', [TemplateController::class, 'testSend'])->name('templates.sendTest');
 
 });
 

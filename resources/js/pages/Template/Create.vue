@@ -1,13 +1,14 @@
 <script setup>
 import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
-import { Bell, Check } from 'lucide-vue-next';
+import { Bell, Check, PhoneOutgoing, Link2, SquarePlus, Trash2 } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AspectRatio } from '@/components/ui/aspect-ratio'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   Card,
   CardContent,
@@ -16,6 +17,12 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/components/ui/tooltip'
 import { Switch } from '@/components/ui/switch'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
@@ -76,6 +83,7 @@ const form = useForm({
   cuerpo: "", 
   pie_pagina: "",
   header_file: null,
+  botones: [],
 })
 
 const acceptFileType = computed(() => {
@@ -137,6 +145,9 @@ const submit = () => {
     onBefore: () => {
       if (form.tipo_cabecera === 'multimedia' && !form.header_file) {
         form.errors.header_file = 'Debes seleccionar un archivo multimedia'
+        return false
+      }
+      if (!validateButtonsRequired()) {
         return false
       }
       headerPreviewUrl.value = ''
@@ -246,6 +257,105 @@ const onFileChange = (e) => {
   headerFile.value = file
   form.header_file = file 
   headerPreviewUrl.value = URL.createObjectURL(file)
+}
+
+const MAX_TEXT = 5
+const MAX_URL = 2
+const MAX_PHONE = 1
+let _btnUid = 1
+
+const countText = computed(() => form.botones.filter(b => b.kind === 'BOTON').length)
+const countUrl  = computed(() => form.botones.filter(b => b.kind === 'URL').length)
+const countPhone = computed(() => form.botones.filter(b => b.kind === 'TELEFONO').length)
+
+function setButtonsError(msg) {
+  form.errors = { ...form.errors, botones: msg }
+  setTimeout(() => { if (form.errors.botones === msg) form.errors.botones = '' }, 2000)
+}
+
+function addButton(kind) {
+  if (kind === 'BOTON' && countText.value >= MAX_TEXT) {
+    setButtonsError('Máximo 5 botones de texto')
+    return
+  }
+  if (kind === 'URL' && countUrl.value >= MAX_URL) {
+    setButtonsError('Máximo 2 botones con URL')
+    return
+  }
+  if (kind === 'TELEFONO' && countPhone.value >= MAX_PHONE) {
+    setButtonsError('Máximo 1 botón de teléfono')
+    return
+  }
+
+  const base = { id: _btnUid++, kind, text: '', _errors: { text: '', url: '', phone: '' } }
+  if (kind === 'URL') {
+    form.botones.push({ ...base, url: '' })
+  } else if (kind === 'TELEFONO') {
+    form.botones.push({ ...base, phone: '' })
+  } else {
+    form.botones.push(base)
+  }
+}
+
+function removeButton(index) {
+  form.botones.splice(index, 1)
+}
+
+function onPhoneInput(e, btn) {
+  const raw = e.target.value || ''
+  btn.phone = raw.replace(/\D+/g, '').slice(0, 11)
+  if (btn._errors?.phone) btn._errors.phone = ''
+}
+
+function onTextInput(btn) {
+   if (btn._errors?.text) btn._errors.text = ''
+}
+
+function onUrlInput(btn) {
+   if (btn._errors?.url) btn._errors.url = ''
+}
+
+function isValidUrl(u) {
+   try {
+     const x = new URL(u)
+     return x.protocol === 'http:' || x.protocol === 'https:'
+   } catch { return false }
+}
+
+function validateButtonsRequired() {
+   let ok = true
+   // limpiar errores previos
+   form.botones.forEach(b => b._errors = { text: '', url: '', phone: '' })
+
+   for (const b of form.botones) {
+     // texto requerido
+     if (!b.text?.trim()) {
+       b._errors.text = 'Texto requerido'
+       ok = false
+     }
+     if (b.kind === 'URL') {
+       if (!b.url?.trim()) {
+         b._errors.url = 'URL requerida'
+         ok = false
+       } else if (b.url.length > 255 || !isValidUrl(b.url)) {
+         b._errors.url = 'URL inválida (http/https, máx. 255)'
+         ok = false
+       }
+     }
+     if (b.kind === 'TELEFONO') {
+       if (!b.phone?.trim()) {
+         b._errors.phone = 'Teléfono requerido'
+         ok = false
+       } else if (b.phone.length !== 11) {
+         b._errors.phone = 'Debe tener 11 dígitos'
+         ok = false
+       }
+     }
+   }
+   if (!ok) {
+     setButtonsError('Completa los campos requeridos de los botones.')
+   }
+   return ok
 }
 
 actualizarHora()
@@ -419,23 +529,42 @@ setInterval(actualizarHora, 60000)
                                 />
                                 <InputError class="mt-2" :message="form.errors.cuerpo" />
 
-                                <button
-                                  type="button"
-                                  @click="addVariable"
-                                  class="absolute bottom-12 right-2 bg-muted rounded px-2 py-1 text-xs hover:bg-muted/70"
-                                  title="Añadir variable"
-                                >
-                                  + variable
-                                </button>
+                                <TooltipProvider :delayDuration="200">
+                                  <Tooltip>
+                                    <TooltipTrigger as-child>
+                                      <button
+                                        type="button"
+                                        @click="addVariable"
+                                        class="absolute bottom-12 right-2 bg-muted rounded px-2 py-1 text-xs hover:bg-muted/70"
+                                        aria-label="Añadir variable"
+                                      >
+                                        + variable
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="end" :sideOffset="6">
+                                      Añadir variable
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
 
-                                <button
-                                  type="button"
-                                  @click="toggleEmojiPicker"
-                                  class="absolute bottom-2 right-2 bg-muted rounded-full p-1 hover:bg-muted/70"
-                                  title="Insertar emoji"
-                                >
-                                  😊
-                                </button>
+                                <TooltipProvider :delayDuration="200">
+                                  <Tooltip>
+                                    <TooltipTrigger as-child>
+                                      <button
+                                        type="button"
+                                        @click="toggleEmojiPicker"
+                                        class="absolute bottom-2 right-2 bg-muted rounded-full p-1 hover:bg-muted/70"
+                                        aria-label="Insertar emoji"
+                                      >
+                                        😊
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="end" :sideOffset="6">
+                                      Insertar emoji
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+
 
                                 <div
                                   v-if="showEmojiPicker"
@@ -448,8 +577,11 @@ setInterval(actualizarHora, 60000)
                               </div>
                           </div>
                         </CardContent>
+
                         <CardFooter>
-                            <div class="flex-1 space-y-1">
+                          <div class="flex flex-col w-full space-y-4">
+                            <!-- Sección pie de página -->
+                            <div class="space-y-1">
                               <p class="text-sm font-medium leading-none">
                                 Pié de página
                               </p>
@@ -467,7 +599,129 @@ setInterval(actualizarHora, 60000)
                               />
                               <InputError class="mt-2" :message="form.errors.pie_pagina" />
                             </div>
+
+                            <div class="space-y-1">
+                              <p class="text-sm font-medium leading-none">Botones</p>
+                              <p class="text-sm text-muted-foreground">Añade uno o más botones a tu plantilla</p>
+
+                              <div class="space-y-3">
+                                <div class="flex items-center gap-2">
+                                  <TooltipProvider :delayDuration="200">
+                                    <ToggleGroup type="multiple" variant="outline">
+                                      <!-- Texto -->
+                                      <Tooltip>
+                                        <TooltipTrigger as-child>
+                                          <ToggleGroupItem value="toggle_boton" aria-label="Agregar botón de texto" @click="addButton('BOTON')">
+                                            <SquarePlus class="h-4 w-4" />
+                                          </ToggleGroupItem>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center">
+                                          Agregar botón texto
+                                        </TooltipContent>
+                                      </Tooltip>
+
+                                      <!-- URL -->
+                                      <Tooltip>
+                                        <TooltipTrigger as-child>
+                                          <ToggleGroupItem value="toggle_url" aria-label="Agregar botón con URL" @click="addButton('URL')">
+                                            <Link2 class="h-4 w-4" />
+                                          </ToggleGroupItem>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center">
+                                          Agregar botón URL
+                                        </TooltipContent>
+                                      </Tooltip>
+
+                                      <!-- Teléfono -->
+                                      <Tooltip>
+                                        <TooltipTrigger as-child>
+                                          <ToggleGroupItem value="toggle_telefono" aria-label="Agregar botón de teléfono" @click="addButton('TELEFONO')">
+                                            <PhoneOutgoing class="h-4 w-4" />
+                                          </ToggleGroupItem>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center">
+                                          Agregar botón teléfono
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </ToggleGroup>
+                                  </TooltipProvider>
+
+                                  <!-- Contadores / límites -->
+                                  <span class="text-xs text-muted-foreground">
+                                    Texto: {{ countText }}/5 · URL: {{ countUrl }}/2 · Tel: {{ countPhone }}/1
+                                  </span>
+                                </div>
+
+                                <!-- Lista de botones agregados -->
+                                <div class="space-y-3">
+                                  <div
+                                    v-for="(btn, idx) in form.botones"
+                                    :key="btn.id"
+                                    class="rounded-lg border border-border p-3 space-y-2"
+                                  >
+                                    <div class="flex items-center justify-between">
+                                      <span class="text-xs uppercase tracking-wide text-muted-foreground">
+                                        {{ btn.kind }}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        class="p-1 rounded hover:bg-muted"
+                                        @click="removeButton(idx)"
+                                        :aria-label="`Eliminar botón ${idx+1}`"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 class="h-4 w-4 text-red-600" />
+                                      </button>
+                                    </div>
+
+                                    <!-- Campo: Texto (todas las variantes) -->
+                                    <input
+                                      v-model="btn.text"
+                                      @input="onTextInput(btn)"
+                                      type="text"
+                                      :maxlength="25"
+                                      placeholder="Texto (máx. 25)"
+                                      required
+                                      class="block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                                    />
+                                    <p v-if="btn._errors?.text" class="text-xs text-red-600">{{ btn._errors.text }}</p>
+
+                                    <!-- Campos adicionales según tipo -->
+                                    <template v-if="btn.kind === 'URL'">
+                                      <input
+                                        v-model="btn.url"
+                                        @input="onUrlInput(btn)"
+                                        type="url"
+                                        :maxlength="255"
+                                        placeholder="https://talina.xyz"
+                                        required
+                                        class="block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                                      />
+                                      <p v-if="btn._errors?.url" class="text-xs text-red-600">{{ btn._errors.url }}</p>
+                                    </template>
+
+                                    <template v-else-if="btn.kind === 'TELEFONO'">
+                                      <input
+                                        :value="btn.phone"
+                                        @input="onPhoneInput($event, btn)"
+                                        inputmode="numeric"
+                                        pattern="[0-9]*"
+                                        placeholder="Número (11 dígitos)"
+                                        required
+                                        class="block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                                      />
+                                      <p v-if="btn._errors?.phone" class="text-xs text-red-600">{{ btn._errors.phone }}</p>
+                                    </template>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <InputError class="mt-2" :message="form.errors?.botones" />
+                            </div>
+
+                          </div>
                         </CardFooter>
+
                     </Card>
                   </div>
 
@@ -512,6 +766,49 @@ setInterval(actualizarHora, 60000)
                                 <!-- CUERPO -->
                                 <div class="whitespace-pre-wrap" v-html="formatWhatsappText(form.cuerpo)"></div>
 
+                                <!-- BOTONES -->
+                                <div v-if="form.botones.length" class="mt-3 space-y-2">
+                                  <div
+                                    v-for="btn in form.botones"
+                                    :key="'pv-'+btn.id"
+                                    class="space-y-1"
+                                  >
+                                    <button
+                                      type="button"
+                                      disabled
+                                      class="w-full rounded-md border py-2 px-3 text-sm flex items-center justify-center gap-2"
+                                      :class="{
+                                        'bg-gray-100 border-gray-300 text-gray-800': btn.kind === 'BOTON',
+                                        'bg-blue-50 border-blue-200 text-blue-700': btn.kind === 'URL',
+                                        'bg-green-50 border-green-200 text-green-700': btn.kind === 'TELEFONO'
+                                      }"
+                                      title="Vista previa del botón"
+                                    >
+                                      <template v-if="btn.kind === 'URL'">
+                                        <Link2 class="h-4 w-4" />
+                                      </template>
+                                      <template v-else-if="btn.kind === 'TELEFONO'">
+                                        <PhoneOutgoing class="h-4 w-4" />
+                                      </template>
+                                      <template v-else>
+                                        <SquarePlus class="h-4 w-4" />
+                                      </template>
+
+                                      <span class="truncate max-w-[85%]">
+                                        {{ btn.text || (btn.kind === 'URL' ? 'Abrir enlace' : btn.kind === 'TELEFONO' ? 'Llamar' : 'Botón') }}
+                                      </span>
+                                    </button>
+
+                                    <!-- Subtítulo informativo (opcional) -->
+                                    <div v-if="btn.kind === 'URL' && btn.url" class="text-[11px] text-gray-500 text-center truncate">
+                                      {{ btn.url }}
+                                    </div>
+                                    <div v-else-if="btn.kind === 'TELEFONO' && btn.phone" class="text-[11px] text-gray-500 text-center">
+                                      {{ btn.phone }}
+                                    </div>
+                                  </div>
+                                </div>
+
                                 <!-- FOOTER -->
                                 <div v-if="form.pie_pagina" class="mt-2 text-xs text-gray-500">
                                   {{ form.pie_pagina }}
@@ -533,7 +830,7 @@ setInterval(actualizarHora, 60000)
 
               <div class="px-4 py-3 bg-muted text-right sm:px-6">
                 <Link
-                  :href="route('templates.index')"
+                  :href="route('templates.index', { companyId, communicationChannelId })"
                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary bg-muted hover:bg-muted/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary mr-4 transition-colors">Cancel </Link>
 
                 <button type="submit" class="bg-primary text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors px-4 py-2 rounded-md text-sm font-medium"

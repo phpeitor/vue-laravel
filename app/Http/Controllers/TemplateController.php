@@ -39,7 +39,7 @@ class TemplateController extends Controller
                     ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.hsm_id') 
                     ->where('a.company_id', $companyId)
                     ->where('a.communication_channel_id', $communicationChannelId)
-                    ->where('a.status', 'ACTIVO')
+                    ->where('a.status_talina', 'true')
                     ->select(
                         'a.id',
                         'a.name',
@@ -180,6 +180,103 @@ class TemplateController extends Controller
             ]
         ];
 
+         // BUTTONS 
+        $rawButtons = $request->input('botones', []);
+        $buttonsPayload = [];
+        $errors = [];
+        $limits = ['BOTON' => 5, 'URL' => 2, 'TELEFONO' => 1];
+        $counts = ['BOTON' => 0, 'URL' => 0, 'TELEFONO' => 0];
+
+        foreach ($rawButtons as $i => $btn) {
+            $kind = strtoupper(trim($btn['kind'] ?? ''));
+            $text = trim($btn['text'] ?? '');
+
+            if (!in_array($kind, ['BOTON', 'URL', 'TELEFONO'], true)) {
+                $errors["botones.$i.kind"] = 'Tipo de botón inválido.';
+                continue;
+            }
+
+            $counts[$kind]++;
+            if ($counts[$kind] > $limits[$kind]) {
+                $errors["botones.$i.limit"] = "Se excedió el máximo para $kind.";
+                continue;
+            }
+
+            if ($text === '' || mb_strlen($text) > 25) {
+                $errors["botones.$i.text"] = 'Texto requerido (máximo 25 caracteres).';
+                continue;
+            }
+
+            if ($kind === 'URL') {
+                $btnUrl = trim($btn['url'] ?? '');
+                if ($btnUrl === '' || mb_strlen($btnUrl) > 255) {
+                    $errors["botones.$i.url"] = 'URL requerida (máximo 255).';
+                    continue;
+                }
+                if (!filter_var($btnUrl, FILTER_VALIDATE_URL)) {
+                    $errors["botones.$i.url"] = 'URL inválida.';
+                    continue;
+                }
+                // Orden de claves: type -> text -> url
+                $buttonsPayload[] = [
+                    "type" => "URL",
+                    "text" => $text,
+                    "url"  => $btnUrl,
+                ];
+            } elseif ($kind === 'TELEFONO') {
+                $phone = preg_replace('/\D+/', '', (string)($btn['phone'] ?? ''));
+                if ($phone === '' || strlen($phone) !== 11) {
+                    $errors["botones.$i.phone"] = 'Teléfono requerido de 11 dígitos.';
+                    continue;
+                }
+                // Orden de claves: type -> text -> phone_number
+                $buttonsPayload[] = [
+                    "type"         => "PHONE_NUMBER",
+                    "text"         => $text,
+                    "phone_number" => $phone,
+                ];
+            } else { 
+                // Orden de claves: type -> text
+                $buttonsPayload[] = [
+                    "type" => "QUICK_REPLY",
+                    "text" => $text,
+                ];
+            }
+        }
+
+        if (!empty($errors)) {
+            return back()->withErrors($errors)->withInput();
+        }
+
+        $buttonsPayload = array_map(function ($b) {
+            switch ($b['type'] ?? '') {
+                case 'URL':
+                    return [
+                        'type' => 'URL',
+                        'text' => $b['text'] ?? '',
+                        'url'  => $b['url'] ?? '',
+                    ];
+                case 'PHONE_NUMBER':
+                    return [
+                        'type'         => 'PHONE_NUMBER',
+                        'text'         => $b['text'] ?? '',
+                        'phone_number' => $b['phone_number'] ?? '',
+                    ];
+                default: 
+                    return [
+                        'type' => 'QUICK_REPLY',
+                        'text' => $b['text'] ?? '',
+                    ];
+            }
+        }, $buttonsPayload);
+
+        if (!empty($buttonsPayload)) {
+            $components[] = [
+                "type"    => "BUTTONS",
+                "buttons" => $buttonsPayload,
+            ];
+        }
+
         if (!empty($validated['pie_pagina'])) {
             $components[] = [
                 "type" => "FOOTER",
@@ -211,14 +308,15 @@ class TemplateController extends Controller
         $responseData = $response->json();
 
         if ($response->successful() && isset($responseData['success']) && $responseData['success'] === true) {
+
             $hsmId = $responseData['id'] ?? null;
+
+            dd([
+                'payload_enviado_api'  => $payload,
+                'response_data_api'    => $responseData
+            ]);
+
             if ($url) {
-
-                /*dd([
-                    'payload_enviado_api'  => $payload,
-                    'response_data_api'    => $responseData
-                ]);*/
-
                 DB::table('template_url_laravel')->insert([
                     'name' => $validated['nombre'],
                     'company_id' => $companyId,
@@ -228,7 +326,12 @@ class TemplateController extends Controller
                 ]);
             }
 
-            return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
+            //return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
+            return redirect()->route('templates.index', [
+                'companyId' => $companyId,
+                'communicationChannelId' => $communicationChannelId,
+            ])->with('success', 'Plantilla creada exitosamente');
+
         } else {
             $errorMessage = $responseData['message'] ?? 'Error desconocido al crear plantilla';
 
@@ -257,7 +360,7 @@ class TemplateController extends Controller
 
         DB::table('message_templates')
             ->where('id', $id)
-            ->update(['status' => 'DELETE']);
+            ->update(['status_talina' => 'false']);
 
         $companyId = $request->query('companyId');
         $communicationChannelId = $request->query('communicationChannelId');
