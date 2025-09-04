@@ -42,7 +42,9 @@ class ThreadController extends Controller
             'thread_status' => $cliente->thread_status,
             'first_conversation_date' => $cliente->first_conversation_date,
             'last_conversation_date' => $cliente->last_conversation_date,
-            'total_duration' => $cliente->total_duration
+            'total_duration' => $cliente->total_duration,
+            'communication_channel_id' => $cliente->communication_channel_id,
+            'company_id' => $cliente->company_id
         ];
 
         return response()->json(['cliente' => $data, 'status' => 200], 200);
