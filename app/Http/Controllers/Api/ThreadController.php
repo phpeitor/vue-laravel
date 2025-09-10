@@ -20,7 +20,8 @@ class ThreadController extends Controller
        $cliente = DB::select("
             SELECT id, close_type, sender_id, first_conversation_date, 
                 last_conversation_date, thread_status,
-                communication_channel_id, company_id, total_duration
+                communication_channel_id, company_id, total_duration,
+                ROUND(EXTRACT(EPOCH FROM (last_conversation_date - hand_off_date))) AS duracion
             FROM public.threads
             WHERE id = ?
         ", [$id]);
@@ -42,7 +43,7 @@ class ThreadController extends Controller
             'thread_status' => $cliente->thread_status,
             'first_conversation_date' => $cliente->first_conversation_date,
             'last_conversation_date' => $cliente->last_conversation_date,
-            'total_duration' => $cliente->total_duration,
+            'total_duration' => $cliente->duracion,
             'communication_channel_id' => $cliente->communication_channel_id,
             'company_id' => $cliente->company_id
         ];
