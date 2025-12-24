@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Log;
 
 class ThreadController extends Controller
 {
-
     public function show($id)
     {
         if (!is_numeric($id)) {
