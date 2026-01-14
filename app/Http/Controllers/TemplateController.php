@@ -70,13 +70,15 @@ class TemplateController extends Controller
 
     public function create()
     {
-        if (!auth()->user()->hasPermissionTo('add template')) {
+        /*if (!auth()->user()->hasPermissionTo('add template')) {
             return redirect()->route('error.403'); 
         }
 
         return inertia('Template/Create', [
 
-        ]);
+        ]);*/
+        $this->authorize('create', Template::class);
+        return inertia('Template/Create');
     }
 
     public function store(Request $request)
@@ -407,17 +409,15 @@ class TemplateController extends Controller
             ])->post(env('WHATSAPP_SEND_URL'), $payload);
 
             $responseData = $response->json();
-
             $hsmId = $responseData['hsmid'] ?? null;
             $success = $response->successful() && ($responseData['success'] ?? false) === true;
 
-            dd([
+            /*dd([
             'payload' => $payload,
             'response_status' => $response->status(),
             'response_data' => $responseData
-            ]);
+            ]);*/
             
-
             DB::table('hsm_laravel')->insert([
                 'id_template' => $validated['messageTemplateId'],
                 'telefono' => $validated['recipientData']['phone'],
@@ -466,6 +466,5 @@ class TemplateController extends Controller
             return redirect()->back()->with('error', 'Error al conectarse con el API.');
         }
     }
-
 
 }

@@ -3,8 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Illuminate\Foundation\Application;
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TemplateController;
+use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
@@ -21,15 +21,16 @@ Route::get('dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
     Route::resource('templates', TemplateController::class)->middleware('permission:templates');
+    Route::resource('campaigns', CampaignController::class)->middleware('permission:campaigns');
 
     Route::get('/templates/create', [TemplateController::class, 'create'])
         ->middleware('permission:add template')
         ->name('templates.create');
+
+    Route::get('/campaigns/create', [CampaignController::class, 'create'])
+        ->middleware('permission:add campaign')
+        ->name('campaigns.create');
 
     Route::resource('users', UserController::class)->except(['create', 'edit', 'show'])
         ->middleware('permission:users');
@@ -47,6 +48,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/templates/send-test', [TemplateController::class, 'testSend'])->name('templates.sendTest');
 
 });
+
+Route::get(
+    '/campaigns/companies/{company}/channels',
+    [CampaignController::class, 'channels']
+)->middleware(['auth', 'permission:campaigns']);
+
+Route::get(
+    '/campaigns/companies/{company}/channels/{channel}/templates',
+    [CampaignController::class, 'templates']
+)->middleware(['auth', 'permission:campaigns']);
+
+Route::get(
+    '/campaigns/templates/{template}',
+    [CampaignController::class, 'templatePreview']
+)->middleware('auth');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

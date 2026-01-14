@@ -27,7 +27,9 @@ import { Switch } from '@/components/ui/switch'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 import { ref, nextTick, watch, computed  } from 'vue'
+import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 
+const { formatWhatsappText } = useWhatsappFormatter()
 const queryParams = new URLSearchParams(window.location.search)
 const companyId = Number(queryParams.get('companyId'))
 const communicationChannelId = Number(queryParams.get('communicationChannelId'))
@@ -162,15 +164,6 @@ const actualizarHora = () => {
   const horas = ahora.getHours().toString().padStart(2, '0')
   const minutos = ahora.getMinutes().toString().padStart(2, '0')
   horaActual.value = `${horas}:${minutos}`
-}
-
-const formatWhatsappText = (text) => {
-  if (!text) return '';
-
-  return text
-    .replace(/\*(.*?)\*/g, '<strong>$1</strong>')     
-    .replace(/_(.*?)_/g, '<em>$1</em>')                
-    .replace(/~(.*?)~/g, '<s>$1</s>');                 
 }
 
 const normalizeVariables = () => {
@@ -725,8 +718,7 @@ setInterval(actualizarHora, 60000)
                     </Card>
                   </div>
 
-
-                   <div class="col-span-4 sm:col-span-3">
+                  <div class="col-span-4 sm:col-span-3">
                     <Card>
                         <CardHeader>
                           <CardTitle>Previsualización del Mensaje</CardTitle>

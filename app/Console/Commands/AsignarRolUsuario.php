@@ -34,6 +34,9 @@ class AsignarRolUsuario extends Command
             'delete user',
             'add user',
             'templates',
+            'add template',
+            'campaigns',
+            'add campaign'
         ];
 
         foreach ($permissions as $perm) {
@@ -49,6 +52,9 @@ class AsignarRolUsuario extends Command
             'delete user',
             'add user',
             'templates',
+            'add template',
+            'campaigns',
+            'add campaign'
         ]);
 
         $user->syncPermissions([
