@@ -64,5 +64,11 @@ Route::get(
     [CampaignController::class, 'templatePreview']
 )->middleware('auth');
 
+Route::get(
+    '/campaigns/recipients/{recipient}/test-send',
+    [CampaignController::class, 'testSendFromRecipient']
+)->middleware(['auth']);
+
+
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
