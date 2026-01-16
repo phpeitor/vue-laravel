@@ -19,7 +19,9 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
 use App\Jobs\ProcessCampaignUpload;
+use App\Jobs\SendCampaignRecipient;
 use Illuminate\Validation\ValidationException;
+use App\Services\WhatsappHsmSender;
 use Inertia\Inertia;
 
 class CampaignController extends Controller
@@ -399,6 +401,16 @@ class CampaignController extends Controller
             ]);
 
             DB::commit();
+            
+            CampaignRecipient::where('campaign_id', $campaign->id)
+            ->where('status', 'PENDING')
+            ->select('id')
+            ->chunkById(100, function ($recipients) {
+                foreach ($recipients as $recipient) {
+                    SendCampaignRecipient::dispatch($recipient->id);
+                }
+            });
+            
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
@@ -409,4 +421,8 @@ class CampaignController extends Controller
         return (bool) preg_match('/^[0-9]{9,15}$/', $phone);
     }
 
+    public function testSendFromRecipient(CampaignRecipient $recipient, WhatsappHsmSender $sender){
+        $result = $sender->sendFromRecipient($recipient);
+        dd($result);
+    }
 }

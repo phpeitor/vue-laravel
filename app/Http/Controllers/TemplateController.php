@@ -412,11 +412,11 @@ class TemplateController extends Controller
             $hsmId = $responseData['hsmid'] ?? null;
             $success = $response->successful() && ($responseData['success'] ?? false) === true;
 
-            /*dd([
+            dd([
             'payload' => $payload,
             'response_status' => $response->status(),
             'response_data' => $responseData
-            ]);*/
+            ]);
             
             DB::table('hsm_laravel')->insert([
                 'id_template' => $validated['messageTemplateId'],
