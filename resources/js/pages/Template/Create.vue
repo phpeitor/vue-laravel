@@ -1,5 +1,5 @@
-<script setup>
-import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
+<script setup >
+import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import { Bell, Check, PhoneOutgoing, Link2, SquarePlus, Trash2 } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
@@ -28,6 +28,17 @@ import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 import { ref, nextTick, watch, computed  } from 'vue'
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
+
+const breadcrumbs = [
+  {
+    title: 'Templates',
+    href: '/templates',
+  },
+  {
+    title: 'Nuevo template',
+    href: '/templates/create',
+  },
+]
 
 const { formatWhatsappText } = useWhatsappFormatter()
 const queryParams = new URLSearchParams(window.location.search)
@@ -358,7 +369,7 @@ setInterval(actualizarHora, 60000)
 <template>
   <Head title="Templates" />
 
-  <AuthenticatedLayout>
+<AppLayout :breadcrumbs="breadcrumbs">
     <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="lg:grid lg:grid-cols-12 lg:gap-x-5">
         <div class="space-y-6 sm:px-6 lg:px-0 lg:col-span-12">
@@ -838,5 +849,5 @@ setInterval(actualizarHora, 60000)
         </div>
       </div>
     </div>
-  </AuthenticatedLayout>
+</AppLayout>
 </template>

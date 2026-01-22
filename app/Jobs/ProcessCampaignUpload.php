@@ -128,6 +128,15 @@ class ProcessCampaignUpload implements ShouldQueue
             ]);
 
             DB::commit();
+
+            CampaignRecipient::where('campaign_id', $campaign->id)
+            ->where('status', 'PENDING')
+            ->select('id')
+            ->chunkById(100, function ($recipients) {
+                foreach ($recipients as $recipient) {
+                    SendCampaignRecipient::dispatch($recipient->id);
+                }
+            });
         } catch (\Throwable $e) {
             DB::rollBack();
             $this->failUpload($campaign, 'Error inesperado durante procesamiento', $e);

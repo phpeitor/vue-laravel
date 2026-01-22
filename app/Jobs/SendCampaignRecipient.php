@@ -24,6 +24,10 @@ class SendCampaignRecipient implements ShouldQueue
 
     public function handle(WhatsappHsmSender $sender): void
     {
+        \Log::info('SendCampaignRecipient running', [
+            'recipient_id' => $this->recipientId,
+        ]);
+        
         $recipient = CampaignRecipient::find($this->recipientId);
 
         if (! $recipient || $recipient->status !== 'PENDING') {
