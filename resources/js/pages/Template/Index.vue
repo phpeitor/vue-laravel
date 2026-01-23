@@ -560,7 +560,7 @@ function soloNumeros(e) {
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center">
+          <div class="flex flex-wrap items-end gap-3 mr-4">
             <select
               v-model="companyId"
               @change="onCompanyChange"
