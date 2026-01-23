@@ -36,9 +36,7 @@ watch(() => form.estado, (val) => {
 });
 
 const submit = () => {
-
     form.estado = form.estado ? 1 : 0;
-
     form.put(route("users.update", user.data.id), {
         preserveScroll: true,
     });
