@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
+import AppLayout from '@/layouts/AppLayout.vue'
+import { type BreadcrumbItem } from '@/types'
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import { Bell, Check, PhoneOutgoing, Link2, SquarePlus, CalendarIcon } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
@@ -22,9 +23,19 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 
+const breadcrumbs: BreadcrumbItem[] = [
+  {
+    title: 'Campaigns',
+    href: '/campaigns',
+  },
+  {
+    title: 'Nueva campaña',
+    href: '/campaigns/create',
+  },
+]
+
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText } = useWhatsappFormatter()
-
 import { ref, watch, computed } from 'vue'
 import { today, getLocalTimeZone } from '@internationalized/date'
 
@@ -222,7 +233,7 @@ const canUploadFile = computed(() => {
 <template>
   <Head title="Campaigns" />
 
-  <AuthenticatedLayout>
+  <AppLayout :breadcrumbs="breadcrumbs">
     <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
@@ -521,5 +532,5 @@ const canUploadFile = computed(() => {
 
       </div>
     </div>
-  </AuthenticatedLayout>
+  </AppLayout>
 </template>

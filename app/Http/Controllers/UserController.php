@@ -27,12 +27,26 @@ class UserController extends Controller
             return Inertia::location(route('error.403'));
         }
         
-        $userQuery = User::search($request);
+        $allowedSorts = ['id'];
+
+        $sort = in_array($request->get('sort'), $allowedSorts)
+            ? $request->get('sort')
+            : 'id';
+
+        $direction = $request->get('direction') === 'desc'
+            ? 'desc'
+            : 'asc';
+
+        $userQuery = User::search($request)
+            ->orderBy($sort, $direction);
+
         return inertia('User/Index', [
             'users' => UserResource::collection(
-                $userQuery->paginate(5)
+                $userQuery->paginate(5)->withQueryString()
             ),
-            'search' => request('search') ?? ''
+            'search' => $request->search ?? '',
+            'sort' => $sort,
+            'direction' => $direction,
         ]);
     }
 

@@ -1,6 +1,6 @@
 <script setup>
+import AppLayout from '@/layouts/AppLayout.vue'
 import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
-import AuthenticatedLayout from '@/layouts/AuthenticatedLayout.vue'
 import { Trash2, FlaskConical, Send, Phone } from 'lucide-vue-next'
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import { h, ref, watch } from 'vue'
@@ -53,6 +53,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+
+const breadcrumbs = [
+  {
+    title: 'Templates',
+    href: '/templates',
+  }
+]
 
 function onCompanyChange() {
   channelId.value = ''
@@ -326,17 +333,6 @@ const table = useVueTable({
     (pagination.value = typeof val === 'function' ? val(pagination.value) : val),
 })
 
-/*const form = useForm({
-  companyId: Number(companyId.value),
-  communicationChannelId: Number(channelId.value),
-  messageTemplateId: null,
-  recipientData: {
-    phone: '',
-    templateBody: []
-  }
-})
-*/
-
 const showAlert = ref(false)
 
 function goToCreate() {
@@ -501,7 +497,6 @@ function handleTestSubmit() {
       }
     },
     onError: (errors) => {
-      //console.log('🛑 errores recibidos', errors)
 
       if (errors.toast || errors.general || errors.api) {
         toast({
@@ -537,7 +532,7 @@ function soloNumeros(e) {
 
 <template>
   <Head title="Templates" />
-  <AuthenticatedLayout>
+  <AppLayout :breadcrumbs="breadcrumbs">
     <div class="bg-background text-foreground py-10">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="sm:flex sm:items-center">
@@ -565,7 +560,7 @@ function soloNumeros(e) {
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center">
+          <div class="flex flex-wrap items-end gap-3 mr-4">
             <select
               v-model="companyId"
               @change="onCompanyChange"
@@ -800,5 +795,5 @@ function soloNumeros(e) {
       </DialogContent>
     </Dialog>
 
-  </AuthenticatedLayout>
+  </AppLayout>
 </template>

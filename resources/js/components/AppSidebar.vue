@@ -18,6 +18,7 @@ const allNavItems: NavItem[] = [
   { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
   { title: 'Plantillas', href: '/templates', icon: Notebook },
   { title: 'Usuarios', href: '/users', icon: Users },
+  { title: 'Campañas', href: '/campaigns/create', icon: Folder },
 ];
 
 const mainNavItems = allNavItems.filter(item => {

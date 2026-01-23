@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CampaignRecipient;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class WhatsappHsmSender
 {
@@ -27,15 +28,45 @@ class WhatsappHsmSender
             ],
         ];
 
-        $response = Http::withOptions([
-            'verify' => false,
-        ])->post(env('WHATSAPP_SEND_URL'), $payload);
+        $url = env('WHATSAPP_SEND_URL');
 
-        return [
+        // 🔎 LOG: request
+        Log::info('WhatsApp HSM SEND - Request', [
+            'recipient_id' => $recipient->id,
+            'campaign_id' => $campaign->id,
+            'url' => $url,
             'payload' => $payload,
-            'success' => $response->successful(),
-            'response' => $response->json(),
-            'status' => $response->status(),
-        ];
+        ]);
+
+        try {
+            $response = Http::withOptions([
+                'verify' => false,
+            ])->post($url, $payload);
+
+            // 🔎 LOG: response
+            Log::info('WhatsApp HSM SEND - Response', [
+                'recipient_id' => $recipient->id,
+                'status' => $response->status(),
+                'response' => $response->json(),
+            ]);
+
+            return [
+                'payload' => $payload,
+                'success' => $response->successful(),
+                'response' => $response->json(),
+                'status' => $response->status(),
+            ];
+
+        } catch (\Throwable $e) {
+            // 🔥 LOG: exception
+            Log::error('WhatsApp HSM SEND - Exception', [
+                'recipient_id' => $recipient->id,
+                'url' => $url,
+                'payload' => $payload,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
     }
 }
