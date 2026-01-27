@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue'
 import { type BreadcrumbItem } from '@/types'
-import { Head, Link, useForm } from "@inertiajs/vue3";
+import { Head, Link, useForm, usePage } from "@inertiajs/vue3";
 import { Bell, Check, PhoneOutgoing, Link2, SquarePlus, CalendarIcon } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
 import { Label } from '@/components/ui/label'
@@ -38,14 +38,14 @@ import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText } = useWhatsappFormatter()
 import { ref, watch, computed } from 'vue'
 import { today, getLocalTimeZone } from '@internationalized/date'
+import { format } from 'date-fns'
 
+const isProgramada = computed(() => form.tipo === 'Programada')
+const todayDate = new Date()
+const todayFormatted = format(todayDate, 'yyyy-MM-dd')
 const timeZone = getLocalTimeZone()
 const minDate = today(timeZone)
 const maxDate = minDate.add({ days: 7 })
-
-import { format } from 'date-fns'
-import { usePage } from '@inertiajs/vue3'
-
 const page = usePage()
 const companies = page.props.companies as {
   id: number
@@ -57,6 +57,7 @@ const form = useForm({
   tipo: '',
   fecha_inicio: '',
   fecha_fin: '',
+  hora_inicio: '', 
   compania: '',
   canal: '',
   template: '',
@@ -72,10 +73,10 @@ watch(dateRange, (range) => {
     return
   }
 
-  const diff =
-    range.end.toDate(timeZone).getTime() -
-    range.start.toDate(timeZone).getTime()
+  const start = range.start.toDate(timeZone)
+  const end = range.end.toDate(timeZone)
 
+  const diff = end.getTime() - start.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
 
   if (days > 7) {
@@ -83,9 +84,41 @@ watch(dateRange, (range) => {
     return
   }
 
-  form.fecha_inicio = format(range.start.toDate(timeZone), 'yyyy-MM-dd')
-  form.fecha_fin = format(range.end.toDate(timeZone), 'yyyy-MM-dd')
+  form.fecha_inicio = format(start, 'yyyy-MM-dd')
+  form.fecha_fin = format(end, 'yyyy-MM-dd')
+
+  if (form.fecha_inicio > todayFormatted) {
+    form.tipo = 'Programada'
+  }
 })
+
+watch(
+  () => form.tipo,
+  (tipo) => {
+    if (tipo === 'Manual') {
+      // 🔥 Si venía de Programada con fecha futura
+      if (form.fecha_inicio && form.fecha_inicio > todayFormatted) {
+        // Forzar hoy
+        form.fecha_inicio = todayFormatted
+        form.fecha_fin = todayFormatted
+
+        // Sincronizar calendario visual
+        dateRange.value = {
+          start: minDate,
+          end: minDate,
+        }
+      }
+
+      form.hora_inicio = ''
+    }
+
+    if (tipo === 'Programada') {
+      if (!form.hora_inicio) {
+        form.hora_inicio = '09:00'
+      }
+    }
+  }
+)
 
 const formattedRange = computed(() => {
   if (!dateRange.value?.start || !dateRange.value?.end) {
@@ -292,9 +325,8 @@ const canUploadFile = computed(() => {
                             <InputError class="mt-2" :message="form.errors.tipo" />
                           </div>
 
-                          <div class="col-span-12">
+                          <div :class="isProgramada ? 'col-span-12 lg:col-span-8' : 'col-span-12'">
                             <Label>Vigencia de la campaña</Label>
-
                             <Popover>
                               <PopoverTrigger as-child>
                                 <Button
@@ -326,6 +358,28 @@ const canUploadFile = computed(() => {
                               class="mt-2"
                               :message="form.errors.fecha_inicio || form.errors.fecha_fin"
                             />
+                          </div>
+
+                          <div
+                              v-if="isProgramada"
+                              class="col-span-12 lg:col-span-4"
+                            >
+                            <label
+                              for="hora_inicio"
+                              class="block text-sm font-medium text-foreground"
+                            >
+                              Hora de inicio
+                            </label>
+
+                            <input
+                              v-model="form.hora_inicio"
+                              type="time"
+                              id="hora_inicio"
+                              class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-colors"
+                              :class="{ 'border-red-500 focus:ring-red-500 focus:border-red-500': form.errors.hora_inicio }"
+                            />
+
+                            <InputError class="mt-2" :message="form.errors.hora_inicio" />
                           </div>
 
                           <div class="col-span-12 lg:col-span-4">
@@ -517,7 +571,7 @@ const canUploadFile = computed(() => {
 
         <div class="px-4 py-3 bg-muted text-right sm:px-6 lg:col-span-12">
             <Link
-              :href="route('templates.index')"
+              :href="route('campaigns.index')"
               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary bg-muted hover:bg-muted/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary mr-4 transition-colors">
               Cancel 
             </Link>

@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Exception as SpreadsheetReaderException;
 
@@ -19,7 +20,7 @@ class ProcessCampaignUpload implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $uploadId;
-    public int $timeout = 120; // segundos
+    public int $timeout = 120; 
     public int $tries = 3;
 
     public function __construct(int $uploadId)
@@ -37,7 +38,6 @@ class ProcessCampaignUpload implements ShouldQueue
         DB::beginTransaction();
 
         try {
-            // 1️⃣ PROCESSING
             $campaign->update(['status' => 'PROCESSING']);
 
             CampaignLog::create([
@@ -46,7 +46,7 @@ class ProcessCampaignUpload implements ShouldQueue
                 'message' => 'Inicio de procesamiento del Excel.',
             ]);
 
-            // 2️⃣ Leer Excel
+
             $filePath = storage_path('app/public/' . $upload->file_path);
 
             try {
@@ -60,7 +60,7 @@ class ProcessCampaignUpload implements ShouldQueue
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray(null, true, true, true);
 
-            array_shift($rows); // quitar header
+            array_shift($rows); 
 
             $total = 0;
             $valid = 0;
@@ -110,15 +110,17 @@ class ProcessCampaignUpload implements ShouldQueue
                 CampaignRecipient::insert($batch);
             }
 
-            // 3️⃣ Métricas
             $upload->update([
                 'total_rows' => $total,
                 'valid_rows' => $valid,
                 'invalid_rows' => $invalid,
             ]);
 
-            // 4️⃣ FINISHED
-            $campaign->update(['status' => 'FINISHED']);
+            if ($campaign->type === 'Manual') {
+                $campaign->update(['status' => 'READY']);
+            } else {
+                $campaign->update(['status' => 'SCHEDULED']);
+            }
 
             CampaignLog::create([
                 'campaign_id' => $campaign->id,
@@ -128,15 +130,11 @@ class ProcessCampaignUpload implements ShouldQueue
             ]);
 
             DB::commit();
-
-            CampaignRecipient::where('campaign_id', $campaign->id)
-            ->where('status', 'PENDING')
-            ->select('id')
-            ->chunkById(100, function ($recipients) {
-                foreach ($recipients as $recipient) {
-                    SendCampaignRecipient::dispatch($recipient->id);
-                }
-            });
+            if ($campaign->type === 'Programada') {
+                DispatchCampaignRecipients::dispatch($campaign->id)->delay($campaign->start_at);
+            } else {
+                DispatchCampaignRecipients::dispatch($campaign->id);
+            }
         } catch (\Throwable $e) {
             DB::rollBack();
             $this->failUpload($campaign, 'Error inesperado durante procesamiento', $e);

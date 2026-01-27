@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Services\WhatsappHsmSender;
 use Illuminate\Bus\Queueable;
@@ -24,17 +25,12 @@ class SendCampaignRecipient implements ShouldQueue
 
     public function handle(WhatsappHsmSender $sender): void
     {
-        \Log::info('SendCampaignRecipient running', [
-            'recipient_id' => $this->recipientId,
-        ]);
-        
         $recipient = CampaignRecipient::find($this->recipientId);
 
         if (! $recipient || $recipient->status !== 'PENDING') {
             return;
         }
 
-        // Marcar como enviando
         $recipient->update([
             'status' => 'SENDING',
         ]);
@@ -46,19 +42,33 @@ class SendCampaignRecipient implements ShouldQueue
                 'status' => 'SENT',
                 'provider_message_id' => $result['response']['hsmid'] ?? null,
             ]);
-        } else {
-            throw new \Exception(
-                $result['response']['message'] ?? 'Error al enviar HSM'
-            );
+
+            // ✅ si ya no quedan PENDING/SENDING, finaliza la campaña
+            Campaign::finalizeIfDone($recipient->campaign_id);
+
+            return;
         }
+
+        // ❗ si falla, que dispare el failed() del job
+        throw new \Exception(
+            $result['response']['message'] ?? 'Error al enviar HSM'
+        );
     }
 
     public function failed(Throwable $e): void
     {
+        // Intentamos obtener el recipient para saber campaign_id
+        $recipient = CampaignRecipient::find($this->recipientId);
+
         CampaignRecipient::where('id', $this->recipientId)
             ->update([
                 'status' => 'FAILED',
                 'error_message' => $e->getMessage(),
             ]);
+
+        // ✅ si ya no quedan PENDING/SENDING, finaliza con FINALLY_FAILED
+        if ($recipient) {
+            Campaign::finalizeIfDone($recipient->campaign_id);
+        }
     }
 }
