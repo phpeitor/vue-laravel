@@ -23,15 +23,53 @@ use App\Jobs\SendCampaignRecipient;
 use Illuminate\Validation\ValidationException;
 use App\Services\WhatsappHsmSender;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class CampaignController extends Controller
 {
     public function index(Request $request)
     {
-         $this->authorize('viewAny', Campaign::class);
+        $this->authorize('viewAny', Campaign::class);
+
+        $selectedCampaignId = $request->integer('campaign_id');
+
+        $campaigns = Campaign::query()
+            ->withCount([
+                'logs',
+                'recipients',
+                'recipients as sent_count' => fn ($q) => $q->where('status', 'SENT'),
+                'recipients as failed_count' => fn ($q) => $q->where('status', 'FAILED'),
+                'recipients as pending_count' => fn ($q) => $q->where('status', 'PENDING'),
+            ])
+            ->orderByDesc('id')
+            ->paginate(12)
+            ->withQueryString();
+
+        if (! $selectedCampaignId) {
+            $selectedCampaignId = $campaigns->getCollection()->first()?->id;
+        }
+
+        $logs = [];
+        $recipients = [];
+
+        if ($selectedCampaignId) {
+            $logs = CampaignLog::query()
+                ->where('campaign_id', $selectedCampaignId)
+                ->orderByDesc('id')
+                ->get();
+
+            $recipients = CampaignRecipient::query()
+                ->where('campaign_id', $selectedCampaignId)
+                ->orderByDesc('id')
+                ->limit(300) // evita reventar el front si hay miles; ajusta a tu gusto
+                ->get();
+        }
 
         return Inertia::render('Campaign/Index', [
-            // datos del listado
+            'campaigns' => $campaigns,               // paginado
+            'campaign_logs' => $logs,                // de la campaña seleccionada
+            'campaign_recipients' => $recipients,    // de la campaña seleccionada
+            'selectedCampaignId' => $selectedCampaignId,
         ]);
     }
 
@@ -97,9 +135,26 @@ class CampaignController extends Controller
             'canal'         => ['required', 'integer', 'exists:communication_channels,id'],
             'template'      => ['required', 'integer', 'exists:message_templates,id'],
             'file'          => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'hora_inicio' => [
+                                'nullable',
+                                'required_if:tipo,Programada',
+                                'date_format:H:i',
+                            ],
+            
         ]);
 
-        // 1️⃣ Validación relacional: canal pertenece a compañía
+        if ($data['tipo'] === 'Programada') {
+            $startAt = Carbon::parse(
+                $data['fecha_inicio'].' '.$data['hora_inicio']
+            );
+
+            if ($startAt->lessThan(now()->startOfMinute())) {
+                throw ValidationException::withMessages([
+                    'hora_inicio' => 'No puedes programar una campaña en este horario',
+                ]);
+            }
+        }
+
         $channel = CommunicationChannel::query()
             ->where('id', $data['canal'])
             ->where('company_id', $data['compania'])
@@ -111,7 +166,6 @@ class CampaignController extends Controller
             ]);
         }
 
-        // 2️⃣ Validación relacional: plantilla pertenece a compañía + canal
         $template = Template::query()
             ->where('id', $data['template'])
             ->where('company_id', $data['compania'])
@@ -124,13 +178,11 @@ class CampaignController extends Controller
             ]);
         }
 
-        // 3️⃣ Validar header del Excel vs plantilla (Paso 4)
         $this->validateExcelHeaderAgainstTemplate($request, $template);
 
         DB::beginTransaction();
 
         try {
-            // 4️⃣ Crear campaña
             $campaign = Campaign::create([
                 'name'                     => $data['nombre'],
                 'description'              => $data['descripcion'],
@@ -141,25 +193,28 @@ class CampaignController extends Controller
                 'end_date'                 => $data['fecha_fin'],
                 'type'                     => $data['tipo'],
                 'status'                   => 'DRAFT',
+                'start_time'               => $data['hora_inicio'] ?? null,
             ]);
 
-            // 5️⃣ Guardar archivo
             $file = $request->file('file');
             $path = $file->store('campaign_uploads', 'public');
 
-            // 6️⃣ Registrar upload
             $upload = CampaignUpload::create([
                 'campaign_id' => $campaign->id,
                 'file_name'   => $file->getClientOriginalName(),
                 'file_path'   => $path,
             ]);
 
-            // 7️⃣ Actualizar estado de campaña
-            $campaign->update([
-                'status' => 'UPLOADED',
-            ]);
+           if ($campaign->type === 'Programada') {
+                $campaign->update([
+                    'status' => 'SCHEDULED',
+                ]);
+            } else {
+                $campaign->update([
+                    'status' => 'UPLOADED',
+                ]);
+            }
 
-            // 8️⃣ Log
             CampaignLog::create([
                 'campaign_id' => $campaign->id,
                 'type'        => 'UPLOAD',

@@ -1,804 +1,363 @@
-<script setup>
-import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
-import AuthenticatedLayout from '@/layouts/AuthenticatedLayout.vue'
-import { Trash2, FlaskConical, Send, Phone } from 'lucide-vue-next'
-import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
-import { h, ref, watch } from 'vue'
-import { useToast } from '@/components/ui/toast'
+<script setup lang="ts">
+import AppLayout from '@/layouts/AppLayout.vue'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { computed, ref, watch } from 'vue'
+
 import { Badge } from '@/components/ui/badge'
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction
-} from '@/components/ui/alert-dialog'
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose
-} from '@/components/ui/dialog'
-import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-  useVueTable,
-  FlexRender,
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from '@/components/ui/tooltip'
-
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 
-function onCompanyChange() {
-  channelId.value = ''
-  router.get(route('templates.index'), { companyId: companyId.value })
+type Campaign = {
+  id: number
+  name: string
+  description?: string | null
+  company_id: number
+  communication_channel_id: number
+  template_id: number
+  start_date: string
+  end_date: string
+  start_time?: string | null
+  status: string
+  type: 'Manual' | 'Programada' | string
+  created_at: string
+  updated_at: string
+  logs_count?: number
+  recipients_count?: number
+  sent_count?: number
+  failed_count?: number
+  pending_count?: number
 }
 
-function applyFilters() {
-  router.get(route('templates.index'), {
-    companyId: companyId.value,
-    communicationChannelId: channelId.value,
-  })
+type CampaignLog = {
+  id: number
+  campaign_id: number
+  type: string
+  message: string
+  meta: any
+  created_at: string
 }
 
-const props = defineProps({
-  templates: Array,
-  companies: Array,
-  channels: Array,
-  selectedCompanyId: [Number, String],
-  selectedChannelId: [Number, String],
-  errorMessage: {
-    type: String,
-    default: '',
-  },
-})
+type CampaignRecipient = {
+  id: number
+  campaign_id: number
+  campaign_upload_id: number
+  phone: string
+  variables: any
+  status: string
+  provider_message_id?: string | null
+  error_message?: string | null
+  created_at: string
+  updated_at: string
+}
 
-const { toast } = useToast()
 const page = usePage()
-const companyId = ref(props.selectedCompanyId || null)
-const channelId = ref(props.selectedChannelId || null)
-const globalFilter = ref('');
-const sorting = ref([{ id: 'id', desc: true }]);
-const pagination = ref({ pageIndex: 0, pageSize: 10 });
 
-const columns = [
-  {
-    accessorKey: 'id',
-    header: ({ column }) =>
-      h(
-        Button,
-        {
-          variant: 'ghost',
-          onClick: () =>
-            column.toggleSorting(column.getIsSorted() === 'asc'),
-        },
-        () => ['ID', h(ArrowUpDown, { class: 'ml-2 w-4 h-4' })]
-      ),
-    cell: ({ row }) => h('span', row.getValue('id')),
-  },
-  {
-    accessorKey: 'name',
-    header: 'Nombre',
-    cell: ({ row }) => h('span', row.getValue('name')),
-  },
-  {
-    accessorKey: 'category',
-    header: 'Categoría',
-    cell: ({ row }) => h('span', row.getValue('category')),
-  },
-  {
-    accessorKey: 'meta_status',
-    header: 'Estado',
-    cell: ({ row }) => {
-      const status = row.getValue('meta_status')
-      const statusClass = {
-        APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-        REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-        PENDING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      }[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
+const campaignsRaw = computed(() => page.props.campaigns as any)
 
-      return h('span', {
-        class: `px-2 py-1 rounded text-xs font-medium ${statusClass}`,
-      }, status)
-    },
-  },
-  {
-    id: 'components',
-    header: 'Componentes',
-    cell: ({ row }) => {
-      const components = row.original.components || [];
-
-      const typeMap = {
-        HEADER: null,
-        BODY: null,
-        FOOTER: null,
-        BUTTONS: null,
-      };
-
-      components.forEach((comp) => {
-        if (typeMap.hasOwnProperty(comp.type)) {
-          typeMap[comp.type] = comp;
-        }
-      });
-
-      const children = [];
-
-      // HEADER
-      const header = typeMap.HEADER;
-      if (header) {
-        const url = header.example?.header_handle?.[0] ?? '';
-
-        if (!url.includes('.') && header.format) {
-          children.push(
-            h(Badge, { variant: 'secondary', class: 'mb-2' }, () => `Header ${header.format}`)
-          )
-        }else if (header.format === 'IMAGE' ) {
-          children.push(
-            h('img', {
-              src: url,
-              alt: 'Header Image',
-              class: 'rounded-md mx-auto max-h-40 object-cover mb-2',
-            })
-          );
-        } else if (header.format === 'VIDEO' ) {
-          children.push(
-            h('video', {
-              src: url,
-              controls: true,
-              class: 'rounded-md mx-auto max-h-40 mb-2',
-            })
-          );
-        } else if (header.format === 'DOCUMENT' ) {
-          children.push(
-            h('iframe', {
-              src: url,
-              class: 'rounded-md mx-auto w-full h-30 mb-2 border',
-            })
-          );
-        } else {
-          children.push(
-            h('div', {
-              class: 'text-sm font-semibold text-foreground mb-1',
-            }, header.text)
-          );
-        }
-      }
-
-      // BODY
-      const body = typeMap.BODY;
-      if (body) {
-        const formattedText = (body.text || '').replace(/({{\d+}})/g, '<strong>$1</strong>');
-        children.push(
-          h('p', {
-            class: 'text-sm text-muted-foreground mb-1 whitespace-pre-wrap',
-            innerHTML: formattedText
-          })
-        );
-      }
-
-      // FOOTER
-      const footer = typeMap.FOOTER;
-      if (footer) {
-        children.push(
-          h('p', {
-            class: 'text-xs text-muted-foreground italic mb-1',
-          }, footer.text)
-        );
-      }
-
-      // BUTTONS
-      const buttons = typeMap.BUTTONS?.buttons ?? [];
-      if (buttons.length > 0) {
-        children.push(
-          h('div', {
-            class: 'flex flex-wrap gap-2 mt-2',
-          }, buttons.map((btn, i) =>
-            h('button', {
-              key: i,
-              class: 'text-xs px-2 py-1 border rounded-md bg-background hover:bg-accent transition-colors',
-            }, btn.text)
-          ))
-        );
-      }
-
-      return h('div', {
-        class: 'p-3 rounded-xl border shadow-sm bg-muted text-left',
-      }, children);
-    },
-  },
-  {
-    id: 'acciones',
-    header: 'Acciones',
-    cell: ({ row }) => {
-      const templateId = row.original.id
-      const isApproved = row.original.meta_status === 'APPROVED'
-
-      const acciones = [
-        h(TooltipProvider, {}, {
-          default: () => h(Tooltip, {}, {
-            default: () => [
-              h(TooltipTrigger, { asChild: true }, () =>
-                h(Button, {
-                  variant: 'ghost',
-                  size: 'icon',
-                  class: 'h-8 w-8',
-                  onClick: () => confirmDeleteTemplate(templateId),
-                }, () => h(Trash2, { class: 'h-4 w-4 text-red-500' }))
-              ),
-              h(TooltipContent, { side: 'top' }, () => 'Eliminar')
-            ]
-          })
-        })
-      ]
-
-      if (isApproved) {
-        // Botón Test
-        acciones.push(
-          h(TooltipProvider, {}, {
-            default: () => h(Tooltip, {}, {
-              default: () => [
-                h(TooltipTrigger, { asChild: true }, () =>
-                  h(Button, {
-                    variant: 'ghost',
-                    size: 'icon',
-                    class: 'h-8 w-8',
-                    onClick: () => openTestTemplateDialog(templateId),
-                  }, () => h(FlaskConical, { class: 'h-4 w-4 text-yellow-500' }))
-                ),
-                h(TooltipContent, { side: 'top' }, () => 'Test')
-              ]
-            })
-          })
-        )
-
-        // Botón Campaña
-        acciones.push(
-          h(TooltipProvider, {}, {
-            default: () => h(Tooltip, {}, {
-              default: () => [
-                h(TooltipTrigger, { asChild: true }, () =>
-                  h(Button, {
-                    variant: 'ghost',
-                    size: 'icon',
-                    class: 'h-8 w-8',
-                    onClick: () => asignarCampania(templateId),
-                  }, () => h(Send, { class: 'h-4 w-4 text-blue-500' }))
-                ),
-                h(TooltipContent, { side: 'top' }, () => 'Campaña')
-              ]
-            })
-          })
-        )
-      }
-
-      return h('div', { class: 'flex gap-2' }, acciones)
-    }
+const campaigns = computed(() => {
+  const raw = campaignsRaw.value
+  // si viene paginado -> raw.data
+  if (raw && typeof raw === 'object' && Array.isArray(raw.data)) {
+    return raw.data as Campaign[]
   }
-]
-
-const table = useVueTable({
-  data: props.templates,
-  columns,
-  getCoreRowModel: getCoreRowModel(),
-  getFilteredRowModel: getFilteredRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  getPaginationRowModel: getPaginationRowModel(),
-  state: {
-    get globalFilter() {
-      return globalFilter.value
-    },
-    get sorting() {
-      return sorting.value
-    },
-    get pagination() {
-      return pagination.value
-    },
-  },
-  onGlobalFilterChange: (val) => (globalFilter.value = val),
-  onSortingChange: (val) =>
-    (sorting.value = typeof val === 'function' ? val(sorting.value) : val),
-  onPaginationChange: (val) =>
-    (pagination.value = typeof val === 'function' ? val(pagination.value) : val),
+  // si viene como array -> raw
+  if (Array.isArray(raw)) return raw as Campaign[]
+  return [] as Campaign[]
 })
+const logsAll = computed(() => (page.props.campaign_logs ?? page.props.logs ?? []) as CampaignLog[])
+const recipientsAll = computed(() => (page.props.campaign_recipients ?? page.props.recipients ?? []) as CampaignRecipient[])
 
-/*const form = useForm({
-  companyId: Number(companyId.value),
-  communicationChannelId: Number(channelId.value),
-  messageTemplateId: null,
-  recipientData: {
-    phone: '',
-    templateBody: []
-  }
-})
-*/
+const initialSelected = (page.props.selectedCampaignId ?? null) as number | null
+const selectedCampaignId = ref<number | null>(initialSelected ?? (campaigns.value[0]?.id ?? null))
 
-const showAlert = ref(false)
+watch(
+  () => campaigns.value,
+  (arr) => {
+    if (!selectedCampaignId.value && arr.length) selectedCampaignId.value = arr[0].id
+  },
+  { immediate: true }
+)
 
-function goToCreate() {
-  if (!companyId.value || !channelId.value) {
-    showAlert.value = true
-    return
-  }
+const selectedCampaign = computed(() =>
+  campaigns.value.find(c => c.id === selectedCampaignId.value) ?? null
+)
 
-  const url = route('templates.create', {
-    communicationChannelId: channelId.value,
-    companyId: companyId.value,
-  })
+const selectedLogs = computed(() =>
+  logsAll.value.filter(l => l.campaign_id === selectedCampaignId.value)
+)
 
-  router.visit(url)
+const selectedRecipients = computed(() =>
+  recipientsAll.value.filter(r => r.campaign_id === selectedCampaignId.value)
+)
+
+const statusVariant = (s: string) => {
+  const v = (s ?? '').toUpperCase()
+  if (['SENT', 'FINALLY', 'READY', 'SCHEDULED'].includes(v)) return 'default'
+  if (['RUNNING', 'PROCESSING', 'SENDING', 'UPLOADED'].includes(v)) return 'secondary'
+  if (['FAILED', 'FINALLY_FAILED'].includes(v)) return 'destructive'
+  return 'outline'
 }
 
-const openDeleteDialog = ref(false)
-const templateToDelete = ref(null)
-
-function confirmDeleteTemplate(id) {
-  templateToDelete.value = id
-  openDeleteDialog.value = true
+const safeJson = (v: any) => {
+  try {
+    if (typeof v === 'string') {
+      // puede venir como JSON string
+      const parsed = JSON.parse(v)
+      return JSON.stringify(parsed, null, 2)
+    }
+    return JSON.stringify(v ?? {}, null, 2)
+  } catch {
+    return String(v ?? '')
+  }
 }
 
-function eliminarTemplate() {
-  if (!templateToDelete.value) return;
+const openCampaign = (id: number) => {
+  selectedCampaignId.value = id
 
-  router.visit(
-    route('templates.destroy', {
-      id: templateToDelete.value,
-      companyId: companyId.value,
-      communicationChannelId: channelId.value
-    }),
-    {
-      method: 'delete',
-      preserveScroll: true,
-      onSuccess: () => {
-        openDeleteDialog.value = false
-        templateToDelete.value = null
-      },
-      onError: (errors) => {
-        alert('Error al eliminar la plantilla')
-        console.error(errors)
-      }
-    }
+  router.get(
+    route('campaigns.index'),
+    { campaign_id: id },
+    { preserveScroll: true, replace: true }
   )
-
-}
-
-const openTestDialog = ref(false)
-const testInputs = ref([])
-const testTemplate = ref(null)
-const telefonoDestino = ref('') 
-const loadingTest = ref(false)
-
-function openTestTemplateDialog(templateId) {
-  const template = props.templates.find(t => t.id === templateId)
-  if (!template) return
-
-  testTemplate.value = template
-  const body = (template.components || []).find(c => c.type === 'BODY')
-  const matches = body?.text.match(/{{\d+}}/g) || []
-
-  testInputs.value = matches.map((placeholder, i) => ({
-    key: placeholder,
-    value: ''
-  }))
-
-  console.log(testTemplate);
-
-  openTestDialog.value = true
-}
-
-function renderBodyWithInputs(text) {
-  let parts = text.split(/({{\d+}})/g)
-
-  return parts.map((part, index) => {
-    const matchIndex = testInputs.value.findIndex(p => p.key === part)
-    if (matchIndex !== -1) {
-      return h('input', {
-        type: 'text',
-        maxlength: 30,
-        class: 'border-0 border-b border-muted-foreground bg-transparent w-32 text-sm focus:outline-none focus:ring-0 focus:border-muted-foreground',
-        value: testInputs.value[matchIndex].value,
-        onInput: (e) => testInputs.value[matchIndex].value = e.target.value
-      })
-    }
-    return part
-  })
-}
-
-function handleTestSubmit() {
-  const valores = testInputs.value.map(i => i.value?.trim())
-
-  if (!testTemplate.value) {
-    toast({
-      title: 'Error inesperado',
-      description: 'No hay plantilla seleccionada',
-      variant: 'destructive',
-    })
-    return
-  }
-
-  if (valores.some(v => !v)) {
-    toast({
-      title: 'Campos requeridos',
-      description: 'Por favor, completa todos los campos antes de continuar',
-      variant: 'destructive',
-    })
-    return
-  }
-
-  if (!telefonoDestino.value || telefonoDestino.value.length !== 11) {
-    toast({
-      title: 'Número inválido',
-      description: 'Teléfono debe tener 11 dígitos',
-      variant: 'destructive',
-    })
-    return
-  }
-
-  loadingTest.value = true
-
-  const headerComponent = (testTemplate.value.components || []).find(c => c.type === 'HEADER')
-  let templateHeader = null
-
-  if (headerComponent && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComponent.format)) {
-    //const url = headerComponent.example?.header_handle?.[0]
-    const url = testTemplate.value.url
-    if (url) {
-      templateHeader = {
-        type: headerComponent.format.toLowerCase(), 
-        variable: url
-      }
-    }
-  }
-
-  const payload = {
-    companyId: Number(companyId.value),
-    communicationChannelId: Number(channelId.value),
-    messageTemplateId: testTemplate.value.id,
-    recipientData: {
-      phone: telefonoDestino.value,
-      templateBody: valores,
-    }
-  }
-
-  if (templateHeader) {
-    payload.recipientData.templateHeader = templateHeader
-  }
-
-  router.post(route('templates.sendTest'), payload, {
-    preserveScroll: true,
-    onSuccess: () => {
-      if (page.props.flash.success) {
-        toast({
-          title: 'Exito',
-          description: page.props.flash.success,
-          variant: 'success',
-        })
-        openTestDialog.value = false
-      }
-    },
-    onError: (errors) => {
-      //console.log('🛑 errores recibidos', errors)
-
-      if (errors.toast || errors.general || errors.api) {
-        toast({
-          title: 'Error',
-          description: errors.toast || errors.general || errors.api,
-          variant: 'destructive',
-        })
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Ocurrió un error inesperado',
-          variant: 'destructive',
-        })
-      }
-    },
-    onFinish: () => {
-      loadingTest.value = false
-    }
-  })
-
-}
-
-function asignarCampania(id) {
-  console.log('Asignar campaña a template', id)
-}
-
-function soloNumeros(e) {
-  if (!/[0-9]/.test(e.key)) {
-    e.preventDefault()
-  }
 }
 </script>
 
 <template>
-  <Head title="Templates" />
-  <AuthenticatedLayout>
-    <div class="bg-background text-foreground py-10">
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="sm:flex sm:items-center">
-          <div class="sm:flex-auto">
-            <div class="flex items-center gap-2">
-              <h1 class="text-xl font-semibold text-foreground">Plantillas de Comunicación</h1>
-              
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      variant="outline"
-                      class="h-7 w-7 p-0"
-                      @click="goToCreate"
-                    >
-                      <ChevronRight class="w-3 h-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center">
-                    <span>Crear</span>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+  <Head title="Campaigns" />
 
-            </div>
-          </div>
-
-          <div class="flex flex-wrap items-center">
-            <select
-              v-model="companyId"
-              @change="onCompanyChange"
-              class="text-sm rounded-md border px-2 py-1 bg-background text-foreground ring-1 ring-border focus:outline-none"
-            >
-              <option value="">Seleccione compañia</option>
-              <option v-for="c in props.companies" :key="c.id" :value="c.id">
-                {{ c.company_name }}
-              </option>
-            </select>
-
-            <select
-              v-model="channelId"
-              @change="applyFilters"
-              :disabled="!companyId"
-              class="text-sm rounded-md border px-2 py-1 bg-background text-foreground ring-1 ring-border focus:outline-none"
-            >
-              <option value="">Seleccione canal</option>
-              <option v-for="c in props.channels" :key="c.id" :value="c.id">
-                {{ c.channel_name }} ({{ c.channel_type }})
-              </option>
-            </select>
-
-          </div>
-
-          <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none relative w-full max-w-xs">
-            <MagnifyingGlass class="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground transform -translate-y-1/2 pointer-events-none" />
-            <Input
-              type="text"
-              placeholder="Buscar"
-              class="pl-8 py-1.5 text-sm bg-card text-foreground ring-1 ring-inset ring-border placeholder:text-muted-foreground focus:ring-2 focus:ring-inset focus:ring-indigo-600 transition-colors"
-              :model-value="globalFilter"
-              @update:model-value="(value) => table.setGlobalFilter(value)"
-            />
-          </div>
-
+  <AppLayout>
+    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h1 class="text-2xl font-semibold">Campañas</h1>
+          <p class="text-sm text-muted-foreground">
+            Gestiona campañas, logs y destinatarios.
+          </p>
         </div>
 
-        <div class="mt-8 rounded-md border shadow">
-          <Table>
-            <TableHeader>
-              <TableRow
-                v-for="headerGroup in table.getHeaderGroups()"
-                :key="headerGroup.id"
-              >
-                <TableHead
-                  v-for="header in headerGroup.headers"
-                  :key="header.id"
-                >
-                  <FlexRender
-                    v-if="!header.isPlaceholder"
-                    :render="header.column.columnDef.header"
-                    :props="header.getContext()"
-                  />
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <template v-if="table.getRowModel().rows.length">
-                <TableRow
-                  v-for="row in table.getRowModel().rows"
-                  :key="row.id"
-                >
-                  <TableCell
-                    v-for="cell in row.getVisibleCells()"
-                    :key="cell.id"
-                  >
-                    <FlexRender
-                      :render="cell.column.columnDef.cell"
-                      :props="cell.getContext()"
-                    />
-                  </TableCell>
-                </TableRow>
-              </template>
-              <TableRow v-else>
-                <TableCell :colspan="columns.length" class="text-center py-4">
-                    <template v-if="props.errorMessage">
-                      <span class="text-red-500 font-medium">{{ props.errorMessage }}</span>
-                    </template>
-                    <template v-else>
-                      No se encontraron resultados
-                    </template>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-
-        <div class="mt-4 flex justify-between items-center">
-          <div class="text-sm text-muted-foreground">
-            Página {{ table.getState().pagination.pageIndex + 1 }} de
-            {{ table.getPageCount() }}
-          </div>
-          <div class="space-x-2">
-            <Button
-              variant="outline"
-              :disabled="!table.getCanPreviousPage()"
-              @click="table.previousPage()"
-            >
-              <ChevronLeft class="w-4 h-4 mr-1" /> Anterior
-            </Button>
-            <Button
-              variant="outline"
-              :disabled="!table.getCanNextPage()"
-              @click="table.nextPage()"
-            >
-              Siguiente <ChevronRight class="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </div>
+        <Link
+          :href="route('campaigns.create')"
+          class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          Nueva campaña
+        </Link>
       </div>
-    </div>
 
-    <AlertDialog v-model:open="openDeleteDialog">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Esta acción eliminará la plantilla seleccionada. Esta operación no se puede deshacer.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction @click="eliminarTemplate">
-            Confirmar
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      <Tabs default-value="campaigns" class="w-full">
+        <TabsList class="mb-4">
+          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+          <TabsTrigger value="campaign_logs" :disabled="!selectedCampaignId">Campaign Logs</TabsTrigger>
+          <TabsTrigger value="campaign_recipients" :disabled="!selectedCampaignId">Campaign Recipients</TabsTrigger>
+        </TabsList>
 
-    <AlertDialog v-model:open="showAlert">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            Selección requerida
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            Debe seleccionar una compañía y un canal antes de continuar.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+        <!-- TAB: CAMPAIGNS -->
+        <TabsContent value="campaigns">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-12">
+              <div v-if="!campaigns.length" class="text-sm text-muted-foreground">
+                No hay campañas aún.
+              </div>
 
-        <AlertDialogFooter>
-          <AlertDialogAction @click="showAlert = false">
-            Entendido
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+              <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <Card
+                  v-for="c in campaigns"
+                  :key="c.id"
+                  class="cursor-pointer hover:shadow-md transition"
+                  :class="selectedCampaignId === c.id ? 'ring-2 ring-primary' : ''"
+                  @click="openCampaign(c.id)"
+                >
+                  <CardHeader>
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle class="text-lg">
+                          #{{ c.id }} — {{ c.name }}
+                        </CardTitle>
+                        <CardDescription>
+                          {{ c.description || 'Sin descripción' }}
+                        </CardDescription>
+                      </div>
 
-    <Dialog v-model:open="openTestDialog">
-      <DialogContent class="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Test Template</DialogTitle>
-          <DialogDescription class="mb-2">
-            Simula el contenido con valores de prueba
-          </DialogDescription>
-        </DialogHeader>
+                      <Badge :variant="statusVariant(c.status)">
+                        {{ c.status }}
+                      </Badge>
+                    </div>
+                  </CardHeader>
 
-        <div class="border rounded-md p-4 bg-muted space-y-4">
-          <!-- HEADER -->
-          <div v-if="testTemplate">
-            <div v-for="component in testTemplate.components" :key="component.type">
-              <template v-if="component.type === 'HEADER'">
-                <div v-if="component.format === 'IMAGE'">
-                  <img
-                    :src="component.example?.header_handle?.[0]"
-                    alt="Header Image"
-                    class="rounded-md max-h-32 object-cover mb-2"
-                  />
-                </div>
-                <div v-else class="text-sm font-semibold mb-2">
-                  {{ component.text }}
-                </div>
-              </template>
+                  <CardContent class="space-y-2 text-sm">
+                    <div class="flex flex-wrap gap-2">
+                      <Badge variant="outline">Tipo: {{ c.type }}</Badge>
+                      <Badge variant="outline">Template: {{ c.template_id }}</Badge>
+                      <Badge variant="outline">Canal: {{ c.communication_channel_id }}</Badge>
+                    </div>
 
-              <!-- BODY -->
-              <template v-if="component.type === 'BODY'">
-                <p class="text-sm text-muted-foreground whitespace-pre-wrap">
-                  <component :is="'span'" v-for="(node, i) in renderBodyWithInputs(component.text)" :key="i">
-                    <template v-if="typeof node === 'string'">{{ node }}</template>
-                    <template v-else><component :is="node" /></template>
-                  </component>
-                </p>
-              </template>
+                    <div class="grid gap-1">
+                      <div>
+                        <span class="text-muted-foreground">Vigencia:</span>
+                        <span class="ml-1">{{ c.start_date }} → {{ c.end_date }}</span>
+                      </div>
 
-              <!-- FOOTER -->
-              <template v-if="component.type === 'FOOTER'">
-                <p class="text-xs italic text-muted-foreground mt-2">{{ component.text }}</p>
-              </template>
+                      <div v-if="c.type === 'Programada' && c.start_time">
+                        <span class="text-muted-foreground">Inicio:</span>
+                        <span class="ml-1">{{ c.start_time }}</span>
+                      </div>
 
-              <!-- BUTTONS -->
-              <template v-if="component.type === 'BUTTONS' && component.buttons?.length">
-                <div class="flex gap-2 mt-4">
-                  <button
-                    v-for="(btn, idx) in component.buttons"
-                    :key="idx"
-                    class="text-xs px-2 py-1 border rounded bg-background hover:bg-accent transition"
-                  >
-                    {{ btn.text }}
-                  </button>
-                </div>
-              </template>
-            </div>
+                      <div class="text-xs text-muted-foreground">
+                        Creada: {{ c.created_at }} · Actualizada: {{ c.updated_at }}
+                      </div>
+                    </div>
+                  </CardContent>
 
-            <div class="mt-6 flex items-center gap-2">
-              <Phone class="w-4 h-4 text-muted-foreground" />
-              <input
-                v-model="telefonoDestino"
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="11"
-                placeholder="Teléfono"
-                class="w-32 border-0 border-b border-muted-foreground rounded-none px-0 py-0.5 text-sm bg-transparent focus:outline-none focus:ring-0 focus:border-muted-foreground"
-                @input="e => telefonoDestino = e.target.value.replace(/\D/g, '')"
-                @keypress="soloNumeros"
-              />
+                  <CardFooter class="justify-between">
+                    <div class="text-xs text-muted-foreground">
+                      Logs: {{ c.logs_count ?? 0 }}
+                      · Recipients: {{ c.recipients_count ?? 0 }}
+                      · Sent: {{ c.sent_count ?? 0 }}
+                      · Pending: {{ c.pending_count ?? 0 }}
+                      · Failed: {{ c.failed_count ?? 0 }}
+                    </div>
+
+                    <Button variant="secondary" size="sm" type="button">
+                      Ver detalle
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </div>
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        <DialogFooter class="mt-4">
-          <DialogClose as-child>
-            <Button variant="outline">Cancelar</Button>
-          </DialogClose>
-          <Button :disabled="loadingTest" @click="handleTestSubmit">
-            <template v-if="loadingTest">Enviando...</template>
-            <template v-else>Enviar</template>
-          </Button>
-        </DialogFooter>
+        <!-- TAB: LOGS -->
+        <TabsContent value="campaign_logs">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-12">
+              <Card>
+                <CardHeader>
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>Logs</CardTitle>
+                      <CardDescription v-if="selectedCampaign">
+                        Campaña #{{ selectedCampaign.id }} — {{ selectedCampaign.name }}
+                      </CardDescription>
+                    </div>
+                    <Badge v-if="selectedCampaign" :variant="statusVariant(selectedCampaign.status)">
+                      {{ selectedCampaign.status }}
+                    </Badge>
+                  </div>
+                </CardHeader>
 
-      </DialogContent>
-    </Dialog>
+                <CardContent>
+                  <div v-if="!selectedCampaignId" class="text-sm text-muted-foreground">
+                    Selecciona una campaña.
+                  </div>
 
-  </AuthenticatedLayout>
+                  <div v-else-if="!selectedLogs.length" class="text-sm text-muted-foreground">
+                    No hay logs para esta campaña.
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <Card v-for="l in selectedLogs" :key="l.id">
+                      <CardHeader class="py-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="flex items-center gap-2">
+                            <Badge variant="outline">{{ l.type }}</Badge>
+                            <span class="text-sm font-medium">#{{ l.id }}</span>
+                          </div>
+                          <span class="text-xs text-muted-foreground">{{ l.created_at }}</span>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent class="pt-0">
+                        <p class="text-sm">{{ l.message }}</p>
+                        <pre
+                          v-if="l.meta"
+                          class="mt-3 text-xs bg-muted rounded-md p-3 overflow-auto"
+                        >{{ safeJson(l.meta) }}</pre>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <!-- TAB: RECIPIENTS -->
+        <TabsContent value="campaign_recipients">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-12">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recipients</CardTitle>
+                  <CardDescription v-if="selectedCampaign">
+                    Campaña #{{ selectedCampaign.id }} — {{ selectedCampaign.name }}
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <div v-if="!selectedCampaignId" class="text-sm text-muted-foreground">
+                    Selecciona una campaña.
+                  </div>
+
+                  <div v-else-if="!selectedRecipients.length" class="text-sm text-muted-foreground">
+                    No hay recipients para esta campaña.
+                  </div>
+
+                  <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <Card v-for="r in selectedRecipients" :key="r.id">
+                      <CardHeader>
+                        <div class="flex items-start justify-between gap-3">
+                          <div>
+                            <CardTitle class="text-base">#{{ r.id }} — {{ r.phone }}</CardTitle>
+                            <CardDescription>
+                              Upload: {{ r.campaign_upload_id }}
+                            </CardDescription>
+                          </div>
+
+                          <Badge :variant="statusVariant(r.status)">
+                            {{ r.status }}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent class="space-y-2">
+                        <div class="text-xs text-muted-foreground">
+                          {{ r.created_at }} → {{ r.updated_at }}
+                        </div>
+
+                        <div v-if="r.provider_message_id" class="text-sm">
+                          <span class="text-muted-foreground">provider_message_id:</span>
+                          <span class="ml-1 font-mono">{{ r.provider_message_id }}</span>
+                        </div>
+
+                        <div v-if="r.error_message" class="text-sm text-destructive">
+                          {{ r.error_message }}
+                        </div>
+
+                        <pre class="text-xs bg-muted rounded-md p-3 overflow-auto">
+                          {{ safeJson(r.variables) }}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  </AppLayout>
 </template>

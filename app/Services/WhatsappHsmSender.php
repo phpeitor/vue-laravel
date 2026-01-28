@@ -30,7 +30,6 @@ class WhatsappHsmSender
 
         $url = env('WHATSAPP_SEND_URL');
 
-        // 🔎 LOG: request
         Log::info('WhatsApp HSM SEND - Request', [
             'recipient_id' => $recipient->id,
             'campaign_id' => $campaign->id,
