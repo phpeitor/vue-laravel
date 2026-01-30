@@ -2,6 +2,50 @@ import { onMounted, ref } from 'vue';
 
 type Appearance = 'light' | 'dark' | 'system';
 
+type StatusVariant = 'default' | 'secondary' | 'destructive' | 'outline'
+
+const normalizeUpper = (s: unknown) => String(s ?? '').trim().toUpperCase()
+
+/**
+ * Variante para <Badge :variant="..." />
+ */
+const statusVariant = (s: unknown): StatusVariant => {
+  const v = normalizeUpper(s)
+  if (['SENT', 'FINALLY', 'READY', 'SCHEDULED'].includes(v)) return 'default'
+  if (['RUNNING', 'PROCESSING', 'SENDING', 'UPLOADED'].includes(v)) return 'secondary'
+  if (['FAILED', 'FINALLY_FAILED'].includes(v)) return 'destructive'
+  return 'outline'
+}
+
+/**
+ * Clases Tailwind para <Badge class="border" :class="badgeClass(...)" />
+ */
+const badgeClass = (s: unknown): string => {
+  const v = normalizeUpper(s)
+  if (['FINALLY', 'SENT', 'READY'].includes(v)) {
+    return 'bg-emerald-600/20 text-emerald-300 border-emerald-600/30'
+  }
+  if (['RUNNING', 'PROCESSING', 'SENDING', 'UPLOADED', 'SCHEDULED'].includes(v)) {
+    return 'bg-sky-600/20 text-sky-300 border-sky-600/30'
+  }
+  if (['FAILED', 'FINALLY_FAILED'].includes(v)) {
+    return 'bg-red-600/20 text-red-300 border-red-600/30'
+  }
+  if (v === 'PENDING') {
+    return 'bg-amber-600/20 text-amber-300 border-amber-600/30'
+  }
+  return 'bg-muted text-foreground'
+}
+
+const statusBadgeClass = (s: string) => {
+  const v = String(s ?? '').toUpperCase()
+  if (v.includes('LEIDO') || v.includes('READ')) return 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/30'
+  if (v.includes('ENTREGADO') || v.includes('DELIVER')) return 'bg-sky-600/20 text-sky-300 border border-sky-600/30'
+  if (v.includes('ENVIADO') || v.includes('SENT')) return 'bg-amber-600/20 text-amber-300 border border-amber-600/30'
+  if (v.includes('FALLIDO') || v.includes('SENT')) return 'bg-red-600/20 text-red-300 border border-red-600/30'
+  return 'bg-muted text-foreground border border-border'
+}
+
 export function updateTheme(value: Appearance) {
     if (typeof window === 'undefined') {
         return;
@@ -90,5 +134,9 @@ export function useAppearance() {
     return {
         appearance,
         updateAppearance,
+        normalizeUpper,
+        statusVariant,
+        badgeClass,
+        statusBadgeClass,
     };
 }

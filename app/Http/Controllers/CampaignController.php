@@ -24,6 +24,7 @@ use Illuminate\Validation\ValidationException;
 use App\Services\WhatsappHsmSender;
 use Inertia\Inertia;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class CampaignController extends Controller
 {
@@ -32,6 +33,8 @@ class CampaignController extends Controller
         $this->authorize('viewAny', Campaign::class);
 
         $selectedCampaignId = $request->integer('campaign_id');
+
+        $perPage = 6;
 
         $campaigns = Campaign::query()
             ->withCount([
@@ -42,35 +45,53 @@ class CampaignController extends Controller
                 'recipients as pending_count' => fn ($q) => $q->where('status', 'PENDING'),
             ])
             ->orderByDesc('id')
-            ->paginate(12)
-            ->withQueryString();
+            ->paginate($perPage)
+            ->withQueryString(); 
 
         if (! $selectedCampaignId) {
             $selectedCampaignId = $campaigns->getCollection()->first()?->id;
         }
 
-        $logs = [];
-        $recipients = [];
+        $campaigns->appends(['campaign_id' => $selectedCampaignId]);
+        $logs = collect();
+        $recipients = collect();
 
         if ($selectedCampaignId) {
             $logs = CampaignLog::query()
                 ->where('campaign_id', $selectedCampaignId)
                 ->orderByDesc('id')
-                ->get();
+                ->get()
+                ->map(function ($log) {
+                    $meta = $log->meta;
+
+                    if (is_string($meta)) {
+                        $decoded = json_decode($meta, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            $meta = $decoded;
+                        }
+                    }
+
+                    if (($log->type ?? null) === 'UPLOAD' && is_array($meta) && !empty($meta['file'])) {
+                        $meta['download_url'] = Storage::disk('public')->url($meta['file']);
+                    }
+
+                    $log->meta = $meta;
+                    return $log;
+                });
 
             $recipients = CampaignRecipient::query()
                 ->where('campaign_id', $selectedCampaignId)
                 ->orderByDesc('id')
-                ->limit(300) // evita reventar el front si hay miles; ajusta a tu gusto
                 ->get();
         }
 
         return Inertia::render('Campaign/Index', [
-            'campaigns' => $campaigns,               // paginado
-            'campaign_logs' => $logs,                // de la campaña seleccionada
-            'campaign_recipients' => $recipients,    // de la campaña seleccionada
+            'campaigns' => $campaigns,
+            'campaign_logs' => $logs,
+            'campaign_recipients' => $recipients,
             'selectedCampaignId' => $selectedCampaignId,
         ]);
+    
     }
 
     public function create()
