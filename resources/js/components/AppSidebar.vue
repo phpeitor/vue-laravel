@@ -16,9 +16,9 @@ console.log('🔐 Permisos disponibles:', permissions.value);
 
 const allNavItems: NavItem[] = [
   { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },
-  { title: 'Plantillas', href: '/templates', icon: Notebook },
   { title: 'Usuarios', href: '/users', icon: Users },
-  { title: 'Campañas', href: '/campaigns/create', icon: Folder },
+  { title: 'Plantillas', href: '/templates', icon: Notebook },
+  { title: 'Campañas', href: '/campaigns', icon: Folder },
 ];
 
 const mainNavItems = allNavItems.filter(item => {

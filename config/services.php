@@ -34,5 +34,8 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'hsm' => [
+        'base_url' => env('HSM_STATUS_BASE_URL', 'http://127.0.0.1:4502'),
+    ],
 
 ];
