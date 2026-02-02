@@ -174,13 +174,23 @@ class TemplateController extends Controller
             $components[] = $headerComponent;
         }
 
-        $components[] = [
+        $bodyComponent = [
             "type" => "BODY",
             "text" => $validated['cuerpo'],
-            "example" => [
-                "body_text" => [$examples]
-            ]
         ];
+
+        if ($totalVariables > 0) {
+            $examples = [];
+            for ($i = 1; $i <= $totalVariables; $i++) {
+                $examples[] = "Ejemplo $i";
+            }
+
+            $bodyComponent["example"] = [
+                "body_text" => [$examples]
+            ];
+        }
+
+        $components[] = $bodyComponent;
 
          // BUTTONS 
         $rawButtons = $request->input('botones', []);
