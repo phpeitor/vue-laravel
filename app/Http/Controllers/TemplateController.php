@@ -36,7 +36,7 @@ class TemplateController extends Controller
 
             if ($communicationChannelId) {            
                 $templates = DB::table('message_templates as a')
-                    ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.hsm_id') 
+                    ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.template_id') 
                     ->where('a.company_id', $companyId)
                     ->where('a.communication_channel_id', $communicationChannelId)
                     ->where('a.status_talina', 'true')
@@ -313,10 +313,10 @@ class TemplateController extends Controller
 
             $hsmId = $responseData['id'] ?? null;
 
-            dd([
+            /*dd([
                 'payload_enviado_api'  => $payload,
                 'response_data_api'    => $responseData
-            ]);
+            ]);*/
 
             if ($url) {
                 DB::table('template_url_laravel')->insert([
@@ -324,7 +324,7 @@ class TemplateController extends Controller
                     'company_id' => $companyId,
                     'channel_id' => $communicationChannelId,
                     'url' => $url,
-                    'hsm_id' => $hsmId,
+                    'template_id' => $hsmId,
                 ]);
             }
 
@@ -412,16 +412,16 @@ class TemplateController extends Controller
             $hsmId = $responseData['hsmid'] ?? null;
             $success = $response->successful() && ($responseData['success'] ?? false) === true;
 
-            dd([
+            /*dd([
             'payload' => $payload,
             'response_status' => $response->status(),
             'response_data' => $responseData
-            ]);
+            ]);*/
             
             DB::table('hsm_laravel')->insert([
                 'id_template' => $validated['messageTemplateId'],
                 'telefono' => $validated['recipientData']['phone'],
-                'hsm_id' => $hsmId,
+                'template_id' => $hsmId,
                 'success' => $success ? 1 : 0,
             ]);
 
