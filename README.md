@@ -11,14 +11,61 @@
     <a href="https://php.net"><img alt="PHP 8.3" src="https://img.shields.io/badge/PHP-8.3-777BB4?style=for-the-badge&logo=php"></a>
 </p>
 
-Crear un nuevo proyecto Laravel
+🛠️ Instalación
+1️⃣ Clonar el repositorio
 ```
-    composer create-project --prefer-dist laravel/laravel .
+git clone https://github.com/phpeitor/vue-laravel.git
+cd vue-laravel
 ```
-Iniciar el servidor WebSocket Laravel Reverb
+2️⃣ Instalar dependencias PHP
 ```
-    php artisan reverb:start --debug
+composer install
 ```
+3️⃣ Instalar dependencias Frontend
+```
+npm install
+```
+4️⃣ Configurar entorno
+```
+cp .env.example .env
+php artisan key:generate
+```
+5️⃣ Migrar base de datos
+```
+php artisan migrate --seed
+```
+
+🚀 Puesta en Marcha
+Backend
+```
+php artisan serve
+```
+Frontend (Vite)
+```
+npm run dev
+```
+WebSockets (Laravel Reverb)
+```
+php artisan reverb:start --debug
+```
+Workers de cola
+```
+php artisan queue:work
+```
+📂 Estructura del Proyecto
+├── app
+├── database
+├── routes
+├── resources
+│   ├── js
+│   │   ├── Pages
+│   │   ├── Components
+│   │   └── Layouts
+├── public
+└── storage
 
 [![Video](https://img.youtube.com/vi/WNNn22SycQY/0.jpg)](https://www.youtube.com/watch?v=WNNn22SycQY)  
 [Ver demo](https://www.youtube.com/watch?v=WNNn22SycQY)
+
+⭐ Si este proyecto te sirve...
+¡Dale una estrella ⭐ y compártelo con tu equipo!
