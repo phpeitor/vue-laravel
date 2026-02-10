@@ -1,7 +1,6 @@
 <a href="https://www.instagram.com/amvsoft.tech/" target="_blank">
   <img src="https://cdn.dribbble.com/userupload/29087371/file/original-66f8e5db372b7b1d9b62f2c7d0931143.gif" />
 </a>
-
 <p align="center">
     <a href="https://laravel.com"><img alt="Laravel v12.x" src="https://img.shields.io/badge/Laravel-v12.x-FF2D20?style=for-the-badge&logo=laravel"></a>
     <a href="https://livewire.laravel.com"><img alt="Vue v3.x" src="https://img.shields.io/badge/vue-v3.x-42b883?style=for-the-badge"></a>
@@ -11,7 +10,7 @@
     <a href="https://php.net"><img alt="PHP 8.3" src="https://img.shields.io/badge/PHP-8.3-777BB4?style=for-the-badge&logo=php"></a>
 </p>
 
-🛠️ Instalación
+## 🛠️ Instalación
 1️⃣ Clonar el repositorio
 ```
 git clone https://github.com/phpeitor/vue-laravel.git
@@ -35,7 +34,7 @@ php artisan key:generate
 php artisan migrate --seed
 ```
 
-🚀 Puesta en Marcha
+## 🚀 Puesta en Marcha
 Backend
 ```
 php artisan serve
@@ -53,6 +52,7 @@ Workers de cola
 php artisan queue:work
 ```
 📂 Estructura del Proyecto
+```
 ├── app
 ├── database
 ├── routes
@@ -63,7 +63,7 @@ php artisan queue:work
 │   │   └── Layouts
 ├── public
 └── storage
-
+```
 [![Video](https://img.youtube.com/vi/WNNn22SycQY/0.jpg)](https://www.youtube.com/watch?v=WNNn22SycQY)  
 [Ver demo](https://www.youtube.com/watch?v=WNNn22SycQY)
 
