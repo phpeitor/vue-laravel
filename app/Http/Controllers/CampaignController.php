@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Exception as SpreadsheetReaderException;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\Campaign;
 use App\Models\CampaignUpload;
 use App\Models\CampaignLog;
@@ -360,5 +363,67 @@ class CampaignController extends Controller
     public function testSendFromRecipient(CampaignRecipient $recipient, WhatsappHsmSender $sender){
         $result = $sender->sendFromRecipient($recipient);
         dd($result);
+    }
+
+    public function exportRecipients(Campaign $campaign)
+    {
+        $this->authorize('viewAny', Campaign::class);
+
+        $rows = DB::select('select * from public.fn_campaign_recipients_export(?)', [$campaign->id]);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $colLetter = function (int $colIndex): string {
+            $s = '';
+            while ($colIndex > 0) {
+                $colIndex--;
+                $s = chr(65 + ($colIndex % 26)) . $s;
+                $colIndex = intdiv($colIndex, 26);
+            }
+            return $s;
+        };
+
+        // Headers (en el orden que devuelve la function)
+        $headers = [
+            'id', 'name', 'description', 'company_name', 'channel_name',
+            'start_date', 'end_date', 'start_time', 'status', 'type',
+            'phone', 'variables', 'status_envio', 'last_datetime', 'last_status',
+        ];
+
+        foreach ($headers as $i => $h) {
+            $cell = $colLetter($i + 1) . '1';
+            $sheet->setCellValue($cell, $h);
+        }
+
+        // Write data
+        $r = 2;
+        foreach ($rows as $row) {
+            $rowArr = (array) $row;
+
+            // variables puede venir como objeto/array => stringify
+            if (isset($rowArr['variables']) && is_array($rowArr['variables'])) {
+                $rowArr['variables'] = json_encode($rowArr['variables'], JSON_UNESCAPED_UNICODE);
+            } elseif (isset($rowArr['variables']) && is_object($rowArr['variables'])) {
+                $rowArr['variables'] = json_encode($rowArr['variables'], JSON_UNESCAPED_UNICODE);
+            }
+
+            foreach ($headers as $i => $key) {
+                $cell = $colLetter($i + 1) . $r;
+                $sheet->setCellValue($cell, $rowArr[$key] ?? '');
+            }
+            $r++;
+        }
+
+        $filename = "campaign_{$campaign->id}_recipients.xlsx";
+
+        return new StreamedResponse(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'max-age=0',
+        ]);
     }
 }
