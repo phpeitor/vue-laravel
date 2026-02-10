@@ -1,5 +1,5 @@
 <a href="https://www.instagram.com/amvsoft.tech/" target="_blank">
-  <img src="https://media2.dev.to/dynamic/image/width=1000,height=320,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2Flds4o7hrd51cqiktzzv4.png" />
+  <img src="https://cdn.dribbble.com/userupload/29087371/file/original-66f8e5db372b7b1d9b62f2c7d0931143.gif" />
 </a>
 
 <p align="center">
