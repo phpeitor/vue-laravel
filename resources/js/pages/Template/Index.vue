@@ -1,11 +1,12 @@
 <script setup>
+import AppLayout from '@/layouts/AppLayout.vue'
 import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
-import AuthenticatedLayout from '@/layouts/AuthenticatedLayout.vue'
-import { Trash2, FlaskConical, Send, Phone } from 'lucide-vue-next'
+import { Trash2, FlaskConical, Send, Phone, MessageCircle, Instagram, Facebook } from 'lucide-vue-next'
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import { h, ref, watch } from 'vue'
 import { useToast } from '@/components/ui/toast'
 import { Badge } from '@/components/ui/badge'
+import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -54,6 +55,14 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
+const breadcrumbs = [
+  {
+    title: 'Templates',
+    href: '/templates',
+  }
+]
+const { formatWhatsappText } = useWhatsappFormatter()
+
 function onCompanyChange() {
   channelId.value = ''
   router.get(route('templates.index'), { companyId: companyId.value })
@@ -64,6 +73,25 @@ function applyFilters() {
     companyId: companyId.value,
     communicationChannelId: channelId.value,
   })
+}
+
+function channelIcon(type) {
+  switch (type) {
+    case 'whatsapp-meta':
+      return MessageCircle
+    case 'instagram-messenger':
+      return Instagram
+    case 'facebook-messenger':
+      return Facebook
+    case 'voice-voximplant':
+      return Phone
+    default:
+      return MessageCircle
+  }
+}
+
+function channelIdentifier(channel) {
+   return channel.channel_name || channel.channel_type || 'Canal Desconocido'
 }
 
 const props = defineProps({
@@ -80,8 +108,8 @@ const props = defineProps({
 
 const { toast } = useToast()
 const page = usePage()
-const companyId = ref(props.selectedCompanyId || null)
-const channelId = ref(props.selectedChannelId || null)
+const companyId = ref(props.selectedCompanyId ?? '')
+const channelId = ref(props.selectedChannelId ?? '')
 const globalFilter = ref('');
 const sorting = ref([{ id: 'id', desc: true }]);
 const pagination = ref({ pageIndex: 0, pageSize: 10 });
@@ -192,10 +220,12 @@ const columns = [
       // BODY
       const body = typeMap.BODY;
       if (body) {
-        const formattedText = (body.text || '').replace(/({{\d+}})/g, '<strong>$1</strong>');
+        const formattedText = formatWhatsappText(body.text || '')
+        .replace(/({{\d+}})/g, '<strong>$1</strong>')
+
         children.push(
           h('p', {
-            class: 'text-sm text-muted-foreground mb-1 whitespace-pre-wrap',
+            class: 'text-sm text-muted-foreground mb-1',
             innerHTML: formattedText
           })
         );
@@ -275,25 +305,6 @@ const columns = [
             })
           })
         )
-
-        // Botón Campaña
-        acciones.push(
-          h(TooltipProvider, {}, {
-            default: () => h(Tooltip, {}, {
-              default: () => [
-                h(TooltipTrigger, { asChild: true }, () =>
-                  h(Button, {
-                    variant: 'ghost',
-                    size: 'icon',
-                    class: 'h-8 w-8',
-                    onClick: () => asignarCampania(templateId),
-                  }, () => h(Send, { class: 'h-4 w-4 text-blue-500' }))
-                ),
-                h(TooltipContent, { side: 'top' }, () => 'Campaña')
-              ]
-            })
-          })
-        )
       }
 
       return h('div', { class: 'flex gap-2' }, acciones)
@@ -326,29 +337,20 @@ const table = useVueTable({
     (pagination.value = typeof val === 'function' ? val(pagination.value) : val),
 })
 
-/*const form = useForm({
-  companyId: Number(companyId.value),
-  communicationChannelId: Number(channelId.value),
-  messageTemplateId: null,
-  recipientData: {
-    phone: '',
-    templateBody: []
-  }
-})
-*/
+const showAlert = ref(false)
 
 function goToCreate() {
   if (!companyId.value || !channelId.value) {
-    alert('Seleccione una compañía y un canal antes de continuar.');
-    return;
+    showAlert.value = true
+    return
   }
 
   const url = route('templates.create', {
     communicationChannelId: channelId.value,
     companyId: companyId.value,
-  });
+  })
 
-  router.visit(url);
+  router.visit(url)
 }
 
 const openDeleteDialog = ref(false)
@@ -499,7 +501,6 @@ function handleTestSubmit() {
       }
     },
     onError: (errors) => {
-      //console.log('🛑 errores recibidos', errors)
 
       if (errors.toast || errors.general || errors.api) {
         toast({
@@ -535,7 +536,7 @@ function soloNumeros(e) {
 
 <template>
   <Head title="Templates" />
-  <AuthenticatedLayout>
+  <AppLayout :breadcrumbs="breadcrumbs">
     <div class="bg-background text-foreground py-10">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="sm:flex sm:items-center">
@@ -563,29 +564,61 @@ function soloNumeros(e) {
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center">
+          <div class="flex items-center gap-3 mr-4 min-w-[420px]">
             <select
               v-model="companyId"
               @change="onCompanyChange"
-              class="text-sm rounded-md border px-2 py-1 bg-background text-foreground ring-1 ring-border focus:outline-none"
+              class="h-9 w-44 rounded-md border bg-background px-3 text-sm text-foreground
+                    ring-1 ring-border focus:outline-none"
             >
-              <option value="">Seleccione compañia</option>
-              <option v-for="c in props.companies" :key="c.id" :value="c.id">
+              <option value="" disabled>
+                Seleccione compañía
+              </option>
+              <option
+                v-for="c in props.companies"
+                :key="c.id"
+                :value="c.id"
+              >
                 {{ c.company_name }}
               </option>
             </select>
+            
+            <div class="relative w-56">
+              <div
+                class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+              >
+                <component
+                  :is="
+                    channelIcon(
+                      props.channels.find(c => c.id == channelId)?.channel_type
+                    )
+                  "
+                  class="h-4 w-4"
+                />
+              </div>
 
-            <select
-              v-model="channelId"
-              @change="applyFilters"
-              :disabled="!companyId"
-              class="text-sm rounded-md border px-2 py-1 bg-background text-foreground ring-1 ring-border focus:outline-none"
-            >
-              <option value="">Seleccione canal</option>
-              <option v-for="c in props.channels" :key="c.id" :value="c.id">
-                {{ c.channel_name }} ({{ c.channel_type }})
-              </option>
-            </select>
+              <select
+                v-model="channelId"
+                @change="applyFilters"
+                :disabled="!companyId"
+                class="h-9 w-full rounded-md border bg-background
+                      pl-8 pr-3 text-sm text-foreground
+                      ring-1 ring-border focus:outline-none
+                      truncate disabled:opacity-50"
+              >
+                <option value="" disabled>
+                  Seleccione canal
+                </option>
+
+                <option
+                  v-for="c in props.channels"
+                  :key="c.id"
+                  :value="c.id"
+                >
+                  {{ channelIdentifier(c) }}
+                </option>
+              </select>
+            </div>
 
           </div>
 
@@ -694,6 +727,25 @@ function soloNumeros(e) {
       </AlertDialogContent>
     </AlertDialog>
 
+    <AlertDialog v-model:open="showAlert">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Selección requerida
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Debe seleccionar una compañía y un canal antes de continuar.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <AlertDialogFooter>
+          <AlertDialogAction @click="showAlert = false">
+            Entendido
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <Dialog v-model:open="openTestDialog">
       <DialogContent class="max-w-lg">
         <DialogHeader>
@@ -779,5 +831,5 @@ function soloNumeros(e) {
       </DialogContent>
     </Dialog>
 
-  </AuthenticatedLayout>
+  </AppLayout>
 </template>

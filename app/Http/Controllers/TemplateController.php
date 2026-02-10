@@ -36,7 +36,7 @@ class TemplateController extends Controller
 
             if ($communicationChannelId) {            
                 $templates = DB::table('message_templates as a')
-                    ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.hsm_id') 
+                    ->leftJoin('template_url_laravel as b', 'a.id', '=', 'b.template_id') 
                     ->where('a.company_id', $companyId)
                     ->where('a.communication_channel_id', $communicationChannelId)
                     ->where('a.status_talina', 'true')
@@ -70,13 +70,15 @@ class TemplateController extends Controller
 
     public function create()
     {
-        if (!auth()->user()->hasPermissionTo('add template')) {
+        /*if (!auth()->user()->hasPermissionTo('add template')) {
             return redirect()->route('error.403'); 
         }
 
         return inertia('Template/Create', [
 
-        ]);
+        ]);*/
+        $this->authorize('create', Template::class);
+        return inertia('Template/Create');
     }
 
     public function store(Request $request)
@@ -172,13 +174,23 @@ class TemplateController extends Controller
             $components[] = $headerComponent;
         }
 
-        $components[] = [
+        $bodyComponent = [
             "type" => "BODY",
             "text" => $validated['cuerpo'],
-            "example" => [
-                "body_text" => [$examples]
-            ]
         ];
+
+        if ($totalVariables > 0) {
+            $examples = [];
+            for ($i = 1; $i <= $totalVariables; $i++) {
+                $examples[] = "Ejemplo $i";
+            }
+
+            $bodyComponent["example"] = [
+                "body_text" => [$examples]
+            ];
+        }
+
+        $components[] = $bodyComponent;
 
          // BUTTONS 
         $rawButtons = $request->input('botones', []);
@@ -311,10 +323,10 @@ class TemplateController extends Controller
 
             $hsmId = $responseData['id'] ?? null;
 
-            dd([
+            /*dd([
                 'payload_enviado_api'  => $payload,
                 'response_data_api'    => $responseData
-            ]);
+            ]);*/
 
             if ($url) {
                 DB::table('template_url_laravel')->insert([
@@ -322,7 +334,7 @@ class TemplateController extends Controller
                     'company_id' => $companyId,
                     'channel_id' => $communicationChannelId,
                     'url' => $url,
-                    'hsm_id' => $hsmId,
+                    'template_id' => $hsmId,
                 ]);
             }
 
@@ -407,21 +419,19 @@ class TemplateController extends Controller
             ])->post(env('WHATSAPP_SEND_URL'), $payload);
 
             $responseData = $response->json();
-
             $hsmId = $responseData['hsmid'] ?? null;
             $success = $response->successful() && ($responseData['success'] ?? false) === true;
 
-            dd([
+            /*dd([
             'payload' => $payload,
             'response_status' => $response->status(),
             'response_data' => $responseData
-            ]);
+            ]);*/
             
-
             DB::table('hsm_laravel')->insert([
                 'id_template' => $validated['messageTemplateId'],
                 'telefono' => $validated['recipientData']['phone'],
-                'hsm_id' => $hsmId,
+                'template_id' => $hsmId,
                 'success' => $success ? 1 : 0,
             ]);
 
@@ -466,6 +476,5 @@ class TemplateController extends Controller
             return redirect()->back()->with('error', 'Error al conectarse con el API.');
         }
     }
-
 
 }
