@@ -67,5 +67,5 @@ php artisan queue:work
 [![Video](https://img.youtube.com/vi/WNNn22SycQY/0.jpg)](https://www.youtube.com/watch?v=WNNn22SycQY)  
 [Ver demo](https://www.youtube.com/watch?v=WNNn22SycQY)
 
-⭐ Si este proyecto te sirve...
-¡Dale una estrella ⭐ y compártelo con tu equipo!
+> [!NOTE]
+> Si este proyecto te sirve... ¡Dale una estrella ⭐ y compártelo con tu equipo!
