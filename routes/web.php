@@ -64,6 +64,9 @@ Route::get(
     [CampaignController::class, 'templatePreview']
 )->middleware('auth');
 
+Route::get('/campaigns/{campaign}/recipients/export', [CampaignController::class, 'exportRecipients'])
+  ->middleware(['auth', 'permission:campaigns'])
+  ->name('campaigns.recipients.export');
 /*
 Route::get(
     '/campaigns/recipients/{recipient}/test-send',

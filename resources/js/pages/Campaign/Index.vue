@@ -273,6 +273,13 @@ const currentPage = computed(() => {
   return p ? Number(p) : campaignsPaginator.value.current_page ?? 1
 })
 
+const activeTab = ref<'campaigns' | 'campaign_logs' | 'campaign_recipients'>('campaigns')
+
+const goToRecipientsTab = (campaignId: number) => {
+  openCampaign(campaignId)
+  activeTab.value = 'campaign_recipients'
+}
+
 const openCampaign = (id: number) => {
   selectedCampaignId.value = id
 
@@ -318,7 +325,7 @@ const goToCampaignPage = (url: string | null) => {
         </Link>
       </div>
 
-      <Tabs default-value="campaigns" class="w-full">
+      <Tabs v-model="activeTab" class="w-full">
         <TabsList class="mb-4">
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="campaign_logs" :disabled="!selectedCampaignId">Campaign Logs</TabsTrigger>
@@ -386,7 +393,12 @@ const goToCampaignPage = (url: string | null) => {
                   </template>
                 </div>
 
-                <Button variant="secondary" size="sm" type="button">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  @click.stop="goToRecipientsTab(c.id)"
+                >
                   Ver detalle
                 </Button>
               </CardFooter>
@@ -556,11 +568,32 @@ const goToCampaignPage = (url: string | null) => {
           </div>
 
           <div v-else class="w-full flex flex-col items-start">
-            <div class="mb-4">
+            <div class="mb-4 w-full">
               <h2 class="text-xl font-semibold">Destinatarios</h2>
-              <p v-if="selectedCampaign" class="text-sm text-muted-foreground">
-                Campaña #{{ selectedCampaign.id }} — {{ selectedCampaign.name }}
-              </p>
+
+              <div class="mt-1 flex items-center justify-between gap-3">
+                <p v-if="selectedCampaign" class="text-sm text-muted-foreground">
+                  Campaña #{{ selectedCampaign.id }} — {{ selectedCampaign.name }}
+                </p>
+
+                <Button
+                  v-if="selectedCampaignId"
+                  variant="outline"
+                  size="sm"
+                  as-child
+                  class="shrink-0"
+                >
+                  <a
+                    :href="route('campaigns.recipients.export', selectedCampaignId)"
+                    target="_blank"
+                    rel="noopener"
+                    class="inline-flex items-center gap-2"
+                  >
+                    <FileSpreadsheet class="h-4 w-4" />
+                    Exportar
+                  </a>
+                </Button>
+              </div>
             </div>
 
             <div v-if="!selectedRecipients.length" class="text-sm text-muted-foreground">
