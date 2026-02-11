@@ -67,6 +67,11 @@ Route::get(
 Route::get('/campaigns/{campaign}/recipients/export', [CampaignController::class, 'exportRecipients'])
   ->middleware(['auth', 'permission:campaigns'])
   ->name('campaigns.recipients.export');
+
+Route::get('/chat', function () {
+    return inertia('Chat/Index');
+})->middleware(['auth']);
+
 /*
 Route::get(
     '/campaigns/recipients/{recipient}/test-send',
