@@ -5,6 +5,7 @@ use Inertia\Inertia;
 use Illuminate\Foundation\Application;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
@@ -68,9 +69,10 @@ Route::get('/campaigns/{campaign}/recipients/export', [CampaignController::class
   ->middleware(['auth', 'permission:campaigns'])
   ->name('campaigns.recipients.export');
 
-Route::get('/chat', function () {
-    return inertia('Chat/Index');
-})->middleware(['auth']);
+Route::middleware(['auth'])->group(function () {
+    Route::get('/chat/threads', [ChatController::class, 'threads']);
+    Route::get('/chat/threads/{thread}/messages', [ChatController::class, 'messages']); // opcional
+});
 
 /*
 Route::get(
