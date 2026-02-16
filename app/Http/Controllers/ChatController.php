@@ -5,85 +5,140 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Company;
+use App\Models\Thread;
+use Inertia\Inertia;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class ChatController extends Controller
 {
-    /**
-     * Devuelve filas (1 por mensaje) como tu query original.
-     * Vue agrupa por thread_id para pintar sidebar + mensajes.
-     */
+    
+    public function index()
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        return Inertia::render('Chat/Index', [
+            'companies' => Company::select('id', 'company_name')
+                ->orderBy('company_name')
+                ->get(),
+        ]);
+    }
+
     public function threads(Request $request)
     {
+        $this->authorize('viewAny', Thread::class);
+
         $data = $request->validate([
             'company_id' => ['required', 'integer'],
             'communication_channel_id' => ['required', 'integer'],
             'date_start' => ['nullable', 'date'],
             'date_end' => ['nullable', 'date'],
+            'q' => ['nullable', 'string'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'cursor' => ['nullable', 'integer'], // cursor por a.id (thread id)
         ]);
 
         $companyId = (int) $data['company_id'];
         $channelId = (int) $data['communication_channel_id'];
         $dateStart = $data['date_start'] ?? null;
         $dateEnd   = $data['date_end'] ?? null;
+        $q         = trim($data['q'] ?? '');
+        $limit     = (int) ($data['limit'] ?? 60);
+        $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
 
-        $q = DB::table('threads as a')
-            ->leftJoin('messages as b', 'a.id', '=', 'b.thread_id')
-            ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
+        $base = DB::table('threads as a')
+            ->where('a.company_id', $companyId)
+            ->where('a.communication_channel_id', $channelId);
+
+        // Cursor: trae threads menores al cursor (infinite scroll)
+        if ($cursor) {
+            $base->where('a.id', '<', $cursor);
+        }
+
+        // ✅ Filtro por fechas sobre mensajes, pero manteniendo OPEN
+        if ($dateStart && $dateEnd) {
+            $base->where(function ($w) use ($dateStart, $dateEnd) {
+                $w->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+                    $sub->select(DB::raw(1))
+                        ->from('messages as b')
+                        ->whereColumn('b.thread_id', 'a.id')
+                        ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
+                })
+                ->orWhere('a.thread_status', 'OPEN');
+            });
+        } else {
+            // si no mandan fechas, mínimo OPEN (o quítalo si quieres todos)
+            $base->where('a.thread_status', 'OPEN');
+        }
+
+        // búsqueda (opcional)
+        if ($q !== '') {
+            $base->where(function ($w) use ($q) {
+                $w->whereExists(function ($sub) use ($q) {
+                    $sub->select(DB::raw(1))
+                        ->from('messages as bq')
+                        ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
+                        ->whereColumn('bq.thread_id', 'a.id')
+                        ->where(function ($w2) use ($q) {
+                            $w2->where('cq.name', 'ilike', "%{$q}%")
+                            ->orWhere('cq.phone', 'ilike', "%{$q}%")
+                            ->orWhere('bq.item_content', 'ilike', "%{$q}%");
+                        });
+                });
+            });
+        }
+
+        // ✅ Último mensaje por thread (Postgres)
+        $rows = $base
+            ->leftJoin(DB::raw("
+                LATERAL (
+                    SELECT b.id as message_id,
+                        b.item_content,
+                        b.create_date as message_create_date,
+                        b.external_id,
+                        b.customer_id
+                    FROM messages b
+                    WHERE b.thread_id = a.id
+                    ORDER BY b.id DESC
+                    LIMIT 1
+                ) last_msg
+            "), DB::raw('true'), DB::raw('true'))
+            ->leftJoin('customers as c', 'c.id', '=', 'last_msg.customer_id')
             ->select([
-                'a.id',
-                'a.company_id',
-                'a.communication_channel_id',
-                'a.assigned_agent_id',
+                'a.id as thread_id',
                 'a.thread_status',
                 'a.first_conversation_date',
                 'a.last_conversation_date',
-                'a.create_date as thread_create_date',
-                'a.sender_id',
-                'a.origin as thread_origin',
-                'a.last_outgoing_message_id',
-
-                'b.id as message_id',
-                'b.thread_id',
-                'b.item_type',
-                'b.item_content',
-                'b.create_date as message_create_date',
-                'b.origin as message_origin',
-                'b.external_id',
-
                 'c.name',
                 'c.phone',
-                'c.create_date as customer_create_date',
-
-                DB::raw("
-                    case
-                        when coalesce(b.external_id, '') <> '' then 'USUARIO'
-                        else 'BOT'
-                    end as enviado_por
-                "),
+                'last_msg.item_content as last_message',
+                'last_msg.message_create_date as last_at',
             ])
-            ->where('a.company_id', $companyId)
-            ->where('a.communication_channel_id', $channelId)
-            ->where(function ($w) use ($dateStart, $dateEnd) {
-                // (b.create_date between start and end) OR thread_status = 'OPEN'
-                if ($dateStart && $dateEnd) {
-                    $w->whereBetween('b.create_date', [$dateStart, $dateEnd])
-                      ->orWhere('a.thread_status', 'OPEN');
-                } else {
-                    // si no mandan fechas, al menos OPEN
-                    $w->where('a.thread_status', 'OPEN');
-                }
-            })
             ->orderByDesc('a.id')
-            ->orderBy('b.id', 'asc');
+            ->limit($limit)
+            ->get();
 
-        return response()->json($q->get());
+        // next_cursor = último thread_id del lote
+        $nextCursor = $rows->last()->thread_id ?? null;
+
+        return response()->json([
+            'data' => $rows,
+            'next_cursor' => $nextCursor,
+        ]);
     }
 
-    /**
-     * Opcional: traer mensajes de un hilo puntual (si luego lo necesitas)
-     */
     public function messages(Request $request, int $threadId)
     {
+        $this->authorize('viewAny', Thread::class);
+
+        $data = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:300'],
+            'cursor' => ['nullable', 'integer'], // para “cargar más” hacia arriba
+        ]);
+
+        $limit  = (int) ($data['limit'] ?? 100);
+        $cursor = isset($data['cursor']) ? (int) $data['cursor'] : null;
+
         $q = DB::table('messages as b')
             ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
             ->select([
@@ -103,9 +158,26 @@ class ChatController extends Controller
                     end as enviado_por
                 "),
             ])
-            ->where('b.thread_id', $threadId)
-            ->orderBy('b.id', 'asc');
+            ->where('b.thread_id', $threadId);
 
-        return response()->json($q->get());
+        // Si cursor viene, trae mensajes “anteriores” (más viejos)
+        if ($cursor) {
+            $q->where('b.id', '<', $cursor);
+        }
+
+        // para infinite scroll hacia arriba: pedimos DESC, luego invertimos
+        $rows = $q->orderByDesc('b.id')
+            ->limit($limit)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $nextCursor = $rows->first()->message_id ?? null;
+
+        return response()->json([
+            'data' => $rows,
+            'next_cursor' => $nextCursor, // úsalo para pedir más viejos
+        ]);
     }
+
 }
