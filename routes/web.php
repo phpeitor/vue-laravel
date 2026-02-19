@@ -69,9 +69,11 @@ Route::get('/campaigns/{campaign}/recipients/export', [CampaignController::class
   ->middleware(['auth', 'permission:campaigns'])
   ->name('campaigns.recipients.export');
 
-Route::middleware(['auth'])->group(function () {
-    Route::get('/chat/threads', [ChatController::class, 'threads']);
-    Route::get('/chat/threads/{thread}/messages', [ChatController::class, 'messages']); // opcional
+Route::middleware(['auth', 'permission:chat'])->group(function () {
+    Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
+
+    Route::get('/chat/threads', [ChatController::class, 'threads'])->name('chat.threads');
+    Route::get('/chat/messages/{threadId}', [ChatController::class, 'messages'])->name('chat.messages'); 
 });
 
 /*

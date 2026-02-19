@@ -1,14 +1,9 @@
 import { onMounted, ref } from 'vue';
 
 type Appearance = 'light' | 'dark' | 'system';
-
 type StatusVariant = 'default' | 'secondary' | 'destructive' | 'outline'
-
 const normalizeUpper = (s: unknown) => String(s ?? '').trim().toUpperCase()
 
-/**
- * Variante para <Badge :variant="..." />
- */
 const statusVariant = (s: unknown): StatusVariant => {
   const v = normalizeUpper(s)
   if (['SENT', 'FINALLY', 'READY', 'SCHEDULED'].includes(v)) return 'default'
@@ -17,9 +12,6 @@ const statusVariant = (s: unknown): StatusVariant => {
   return 'outline'
 }
 
-/**
- * Clases Tailwind para <Badge class="border" :class="badgeClass(...)" />
- */
 const badgeClass = (s: unknown): string => {
   const v = normalizeUpper(s)
   if (['FINALLY', 'SENT', 'READY'].includes(v)) {
@@ -98,11 +90,8 @@ export function initializeTheme() {
         return;
     }
 
-    // Initialize theme from saved preference or default to system...
     const savedAppearance = getStoredAppearance();
     updateTheme(savedAppearance || 'system');
-
-    // Set up system theme change listener...
     mediaQuery()?.addEventListener('change', handleSystemThemeChange);
 }
 
@@ -121,13 +110,8 @@ export function useAppearance() {
 
     function updateAppearance(value: Appearance) {
         appearance.value = value;
-
-        // Store in localStorage for client-side persistence...
         localStorage.setItem('appearance', value);
-
-        // Store in cookie for SSR...
         setCookie('appearance', value);
-
         updateTheme(value);
     }
 

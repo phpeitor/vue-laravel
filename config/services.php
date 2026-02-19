@@ -17,17 +17,14 @@ return [
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],
-
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
-
     'resend' => [
         'key' => env('RESEND_KEY'),
     ],
-
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
@@ -37,5 +34,7 @@ return [
     'hsm' => [
         'base_url' => env('HSM_STATUS_BASE_URL', 'http://127.0.0.1:4502'),
     ],
-
+    'chat' => [
+        'thread_base_url' => env('CHAT_THREAD_BASE_URL'),
+    ],
 ];
