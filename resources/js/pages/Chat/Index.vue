@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, usePage } from '@inertiajs/vue3'
-import { computed, watch, nextTick } from 'vue'
-import { ref, type Ref } from 'vue'
+import { computed, watch, nextTick, onBeforeUnmount, ref, type Ref } from 'vue'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,10 +10,13 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
+
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName } = useTextFormat()
+
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText } = useWhatsappFormatter()
+
 import { Label } from '@/components/ui/label'
 import { RangeCalendar } from '@/components/ui/range-calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -93,13 +95,11 @@ const dateRange = ref({
 const minDate = today(tz).subtract({ days: 365 })
 const maxDate = today(tz).add({ days: 365 })
 
-// ✅ company default: 1 si existe, si no el primero
 const defaultCompanyId = computed<number | ''>(() => {
   const by1 = companies.find(c => Number(c.id) === 1)?.id
   return (by1 ?? companies[0]?.id ?? '') as any
 })
 
-// filtros (ya con default)
 const filters = ref({
   company_id: defaultCompanyId.value as number | '',
   communication_channel_id: 3 as number | '',
@@ -124,9 +124,24 @@ const activeThread = computed<ThreadSummary | null>(() => {
 const messagesList = ref<MessageRow[]>([])
 const messagesNextCursor = ref<number | null>(null)
 const messagesHasMore = ref(true)
+
 const loadingThreads = ref(false)
 const loadingMessages = ref(false)
 
+/* ---------------------------
+   Scroll helpers
+---------------------------- */
+const scrollerRef = ref<HTMLElement | null>(null)
+const scrollToBottom = async () => {
+  await nextTick()
+  const el = scrollerRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+}
+
+/* ---------------------------
+   Computeds
+---------------------------- */
 const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
@@ -138,7 +153,7 @@ const activeMessages = computed<UiMessage[]>(() => {
     return {
       id: String(m.message_id ?? `${m.thread_id}-${idx}`),
       sender,
-      text: formatted,         
+      text: formatted,
       created_at: created,
       item_type: m.item_type ?? 'text',
     }
@@ -153,15 +168,9 @@ const filteredThreads = computed(() => {
   )
 })
 
-// scroll
-const scrollerRef = ref<HTMLElement | null>(null)
-const scrollToBottom = async () => {
-  await nextTick()
-  const el = scrollerRef.value
-  if (!el) return
-  el.scrollTop = el.scrollHeight
-}
-
+/* ---------------------------
+   Date watcher
+---------------------------- */
 watch(dateRange, (range) => {
   if (!range?.start || !range?.end) return
   const start = range.start.toDate(tz)
@@ -170,6 +179,9 @@ watch(dateRange, (range) => {
   filters.value.date_end = format(end, 'yyyy-MM-dd')
 })
 
+/* ---------------------------
+   API
+---------------------------- */
 const applyFilters = async () => {
   filtersOpen.value = false
   await fetchThreads()
@@ -193,11 +205,9 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
 
     const res = await axios.get(`/chat/messages/${threadId}`, { params })
     const payload = res.data as { data: MessageRow[]; next_cursor: number | null }
-
     const incoming = payload.data ?? []
 
     if (opts?.prepend) {
-      // si no vino nada, ya no hay más
       if (incoming.length === 0) {
         messagesHasMore.value = false
         return
@@ -205,14 +215,11 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
 
       messagesList.value = [...incoming, ...messagesList.value]
 
-      // si vino menos del límite, ya no hay más
       if (incoming.length < MESSAGES_LIMIT) {
         messagesHasMore.value = false
       }
     } else {
       messagesList.value = incoming
-
-      // ✅ CLAVE: si el primer load trae menos del límite, no hay más mensajes viejos
       messagesHasMore.value = incoming.length >= MESSAGES_LIMIT
     }
 
@@ -220,29 +227,6 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
   } finally {
     loadingMessages.value = false
   }
-}
-
-watch(activeThreadId, async (id) => {
-  if (!id) return
-  messagesHasMore.value = true
-  await fetchMessages(id)
-  await scrollToBottom()
-})
-
-const resetFilters = async () => {
-  const { startStr, endStr } = buildDefaultDates()
-
-  filters.value.company_id = defaultCompanyId.value as any
-  filters.value.communication_channel_id = 3
-  filters.value.date_start = startStr
-  filters.value.date_end = endStr
-
-  dateRange.value = {
-    start: parseDate(startStr),
-    end: parseDate(endStr),
-  }
-
-  // si el canal 3 no existe para esa compañía, el watcher de company lo ajusta
 }
 
 const fetchThreads = async (opts?: { append?: boolean }) => {
@@ -265,15 +249,11 @@ const fetchThreads = async (opts?: { append?: boolean }) => {
     const res = await axios.get('/chat/threads', { params })
     const payload = res.data as { data: ThreadSummary[]; next_cursor: number | null }
 
-    if (opts?.append) {
-      threadsList.value.push(...(payload.data ?? []))
-    } else {
-      threadsList.value = payload.data ?? []
-    }
+    if (opts?.append) threadsList.value.push(...(payload.data ?? []))
+    else threadsList.value = payload.data ?? []
 
     threadsNextCursor.value = payload.next_cursor ?? null
 
-    // seleccionar el primero si no hay activo
     if (!activeThreadId.value && threadsList.value.length) {
       activeThreadId.value = threadsList.value[0].thread_id
     }
@@ -282,6 +262,102 @@ const fetchThreads = async (opts?: { append?: boolean }) => {
   }
 }
 
+const resetFilters = async () => {
+  const { startStr, endStr } = buildDefaultDates()
+
+  filters.value.company_id = defaultCompanyId.value as any
+  filters.value.communication_channel_id = 3
+  filters.value.date_start = startStr
+  filters.value.date_end = endStr
+
+  dateRange.value = {
+    start: parseDate(startStr),
+    end: parseDate(endStr),
+  }
+}
+
+/* ---------------------------
+   SOCKETS (Reverb/Echo)
+   (Colocados AQUÍ para que ya existan filters/threads/messages)
+---------------------------- */
+let companyChannel: any = null
+let threadChannel: any = null
+
+const safeEcho = () => (typeof window !== 'undefined' ? (window as any).Echo : null)
+
+const subscribeCompany = (companyId: number) => {
+  const Echo = safeEcho()
+  if (!Echo) return
+
+  if (companyChannel?.name) Echo.leave(companyChannel.name)
+
+  companyChannel = Echo.private(`chat.company.${companyId}`)
+    .listen('.thread.created', (e: any) => {
+      const idx = threadsList.value.findIndex(t => t.thread_id === e.thread_id)
+      if (idx >= 0) threadsList.value[idx] = { ...threadsList.value[idx], ...e }
+      else threadsList.value.unshift(e)
+    })
+    .listen('.message.created', (e:any) => {
+        console.log('REVERB message.created', e);
+        // actualizar preview en threadsList
+        const idx = threadsList.value.findIndex(t => t.thread_id === e.thread_id)
+        if (idx >= 0) {
+        threadsList.value[idx] = {
+            ...threadsList.value[idx],
+            last_message: e.item_content,
+            last_at: e.message_create_date,
+        }
+        }
+
+        // si no es el thread activo, toast (y NO lo agregues al chat abierto)
+        if (activeThreadId.value !== e.thread_id) {
+        // toast: "Nuevo mensaje de X"
+        return
+        }
+
+        // si es el activo, lo agregas aquí también (o lo dejas al thread channel)
+    })
+}
+
+const subscribeThread = (threadId: number) => {
+  const Echo = safeEcho()
+  if (!Echo) return
+
+  if (threadChannel?.name) Echo.leave(threadChannel.name)
+
+  threadChannel = Echo.private(`chat.thread.${threadId}`)
+  .listen('.message.created', (e: any) => {
+    // 1) si ya existe por id -> no duplicar
+    if (messagesList.value.some(m => m.message_id === e.message_id)) return
+
+    // 2) Si el mensaje viene de tu lado (APP/BOT), NO lo pintes como otro globo
+    //    Solo intenta reemplazar el optimistic (si lo usas) y/o toast.
+    const isMine = e.origin === 'APP' || e.enviado_por === 'BOT'
+
+    if (isMine) {
+      // si guardas external_id tmp en el optimistic, aquí podrías reemplazarlo:
+      const idx = messagesList.value.findIndex(m => m.external_id && m.external_id === e.external_id)
+      if (idx >= 0) messagesList.value[idx] = e
+      // si no tienes match, al menos NO push
+      // toast opcional: "Enviado"
+      return
+    }
+
+    // 3) Entrante: sí agregar
+    messagesList.value.push(e)
+    nextTick(() => scrollToBottom())
+  })
+
+}
+
+/* ---------------------------
+   WATCHERS (sin duplicar)
+---------------------------- */
+
+// ✅ UN SOLO watcher para company_id:
+// - carga channels
+// - ajusta communication_channel_id
+// - subscribeCompany
 watch(
   () => filters.value.company_id,
   async (companyId) => {
@@ -292,20 +368,38 @@ watch(
       return
     }
 
+    // subscribe a company
+    subscribeCompany(Number(companyId))
+
+    // cargar channels
     const { data } = await axios.get(`/campaigns/companies/${companyId}/channels`)
     channels.value = data ?? []
 
-    // Mantener canal si existe
+    // mantener canal si existe
     const current = filters.value.communication_channel_id
     const existsCurrent = !!current && channels.value.some(ch => Number(ch.id) === Number(current))
     if (existsCurrent) return
 
-    // Preferir canal 3, si no el primero
+    // preferir canal 3, sino el primero
     const prefer3 = channels.value.find(ch => Number(ch.id) === 3)
     filters.value.communication_channel_id = (prefer3?.id ?? channels.value[0]?.id ?? '') as any
   },
   { immediate: true }
 )
+
+// ✅ watcher del thread: subscribe + reset + fetch + scroll
+watch(activeThreadId, async (id) => {
+  if (!id) return
+
+  subscribeThread(id)
+
+  messagesList.value = []
+  messagesNextCursor.value = null
+  messagesHasMore.value = true
+
+  await fetchMessages(id)
+  await scrollToBottom()
+})
 
 const canFetch = computed(() => !!filters.value.company_id && !!filters.value.communication_channel_id)
 
@@ -322,12 +416,54 @@ watch(
   { immediate: true }
 )
 
-// composer (por ahora mock)
+/* ---------------------------
+   Cleanup sockets
+---------------------------- */
+onBeforeUnmount(() => {
+  const Echo = safeEcho()
+  if (!Echo) return
+  if (companyChannel?.name) Echo.leave(companyChannel.name)
+  if (threadChannel?.name) Echo.leave(threadChannel.name)
+})
+
+/* ---------------------------
+   Send message
+---------------------------- */
 const draft = ref('')
+
 const sendMessage = async () => {
-  if (!draft.value.trim()) return
-  // luego: POST /chat/threads/{id}/messages
+  if (!activeThreadId.value) return
+  const msg = draft.value.trim()
+  if (!msg) return
+
+  const threadId = activeThreadId.value
+  const optimisticId = `tmp-${Date.now()}`
+  const socketId = (window as any).Echo?.socketId?.()
+
+  messagesList.value.push({
+    message_id: -1,
+    thread_id: threadId,
+    item_type: 'text',
+    item_content: msg,
+    message_create_date: new Date().toISOString(),
+    origin: 'APP',
+    external_id: optimisticId,
+  } as any)
+
+  nextTick(() => scrollToBottom())
   draft.value = ''
+
+  try {
+    await axios.post(`/api/chat/threads/${threadId}/reply`, {
+      message: msg,
+      messageType: 'text',
+      userId: 1,
+    },{
+        headers: socketId ? { 'X-Socket-Id': socketId } : {}
+    })
+  } catch (e) {
+    console.error(e)
+  }
 }
 </script>
 
@@ -580,7 +716,7 @@ const sendMessage = async () => {
                         >
                         
                         <div class="leading-relaxed break-words" v-html="m.text"></div>
-                        
+
                         <div class="mt-1 text-[11px] opacity-70" :class="m.sender === 'me' ? 'text-right' : ''">
                          {{ m.created_at }}
                         </div>
