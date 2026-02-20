@@ -40,8 +40,13 @@ class ChatController extends Controller
 
         $companyId = (int) $data['company_id'];
         $channelId = (int) $data['communication_channel_id'];
-        $dateStart = $data['date_start'] ?? null;
-        $dateEnd   = $data['date_end'] ?? null;
+        $dateStart = isset($data['date_start'])
+            ? Carbon::parse($data['date_start'])->startOfDay()
+            : null;
+
+        $dateEnd = isset($data['date_end'])
+            ? Carbon::parse($data['date_end'])->endOfDay() // 👈 23:59:59
+            : null;
         $q         = trim($data['q'] ?? '');
         $limit     = (int) ($data['limit'] ?? 60);
         $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
