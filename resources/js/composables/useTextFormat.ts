@@ -69,13 +69,6 @@ const toTitleCase = (input: unknown, options?: TitleCaseOptions) => {
   return out.join(' ')
 }
 
-/**
- * Nombre para threads:
- * - limpia undefined
- * - Title Case
- * - fallback: phone
- * - fallback final: #thread_id
- */
 const displayThreadName = (t: { name?: string | null; phone?: string | null; thread_id?: number | string }) => {
   const base = stripUndefined(t.name)
 
@@ -85,11 +78,34 @@ const displayThreadName = (t: { name?: string | null; phone?: string | null; thr
   return ''
 }
 
+const formatPE = (utc: string | null) => {
+  if (!utc) return ''
+
+  // Normaliza: "2026-02-18 07:39:51" -> "2026-02-18T07:39:51Z"
+  const normalized = utc.includes('T') ? utc : utc.replace(' ', 'T')
+  const withTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
+
+  const d = new Date(withTZ)
+
+  // Formato fijo: 18/2/2026, 7:39:51 a. m. (siempre)
+  return new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima', // ✅ UTC-5
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 export function useTextFormat() {
   return {
     normalizeSpaces,
     stripUndefined,
     toTitleCase,
     displayThreadName,
+    formatPE,
   }
 }

@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 import { useTextFormat } from '@/composables/useTextFormat'
-const { displayThreadName } = useTextFormat()
+const { displayThreadName, formatPE } = useTextFormat()
 
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText } = useWhatsappFormatter()
@@ -219,8 +219,7 @@ const scrollToBottom = async () => {
 const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
-    const created = m.message_create_date ? new Date(m.message_create_date).toLocaleString() : ''
-
+    const created = formatPE(m.message_create_date)
     const raw = m.item_content ?? ''
     const formatted = raw ? formatWhatsappText(raw) : ''
 
@@ -737,7 +736,7 @@ const sendMessage = async () => {
                               </Tooltip>
                             </TooltipProvider>
                           </div>
-                          <span class="text-[11px] text-muted-foreground">{{ t.last_at }}</span>
+                          <span class="text-[11px] text-muted-foreground">{{ formatPE(t.last_at) }}</span>
                         </div>
                       </div>
                     </div>
@@ -930,7 +929,7 @@ const sendMessage = async () => {
                     </div>
 
                     <span class="text-xs opacity-70">
-                      {{ m.message_create_date ? new Date(m.message_create_date).toLocaleString() : '' }}
+                      {{ formatPE(m.message_create_date) }}
                     </span>
                   </div>
 
