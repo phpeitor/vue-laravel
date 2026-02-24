@@ -10,7 +10,12 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName } = useTextFormat()
 
@@ -30,7 +35,7 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog'
 
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -430,6 +435,23 @@ onBeforeUnmount(() => {
    Send message
 ---------------------------- */
 const draft = ref('')
+const closingThreadId = ref<number | null>(null)
+
+const closeThread = async (threadId: number) => {
+  closingThreadId.value = threadId
+  try {
+    await axios.patch(`/chat/threads/${threadId}/close`)
+    // Actualizar estado local
+    const idx = threadsList.value.findIndex(t => t.thread_id === threadId)
+    if (idx >= 0) {
+      threadsList.value[idx].thread_status = 'CLOSED'
+    }
+  } catch (e) {
+    console.error('Error cerrando conversación:', e)
+  } finally {
+    closingThreadId.value = null
+  }
+}
 
 const sendMessage = async () => {
   if (!activeThreadId.value) return
@@ -620,9 +642,32 @@ const sendMessage = async () => {
                         </div>
 
                         <div class="flex flex-col items-end gap-1">
-                          <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
-                            {{ t.thread_status }}
-                          </Badge>
+                          <div class="flex items-center gap-1">
+                            <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
+                              {{ t.thread_status }}
+                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger as-child>
+                                  <Button
+                                    v-if="t.thread_status === 'OPEN'"
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-6 w-6"
+                                    :disabled="closingThreadId === t.thread_id"
+                                    @click.stop="closeThread(t.thread_id)"
+                                  >
+                                    <X class="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+
+                                <TooltipContent>
+                                  <p>Cerrar conversación</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
                           <span class="text-[11px] text-muted-foreground">{{ t.last_at }}</span>
                         </div>
                       </div>
