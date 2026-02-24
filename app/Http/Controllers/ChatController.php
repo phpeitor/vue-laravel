@@ -206,4 +206,60 @@ class ChatController extends Controller
         ]);
     }
 
+    public function historyByPhone(Request $request)
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        $data = $request->validate([
+            'company_id' => ['required', 'integer'],
+            'communication_channel_id' => ['required', 'integer'],
+            'phone' => ['required', 'string'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:300'],
+            'cursor' => ['nullable', 'integer'], // b.id (message id)
+        ]);
+
+        $companyId = (int) $data['company_id'];
+        $channelId = (int) $data['communication_channel_id'];
+        $phone     = trim($data['phone']);
+        $limit     = (int) ($data['limit'] ?? 100);
+        $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
+
+        $q = DB::table('threads as a')
+            ->leftJoin('messages as b', 'a.id', '=', 'b.thread_id')
+            ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
+            ->where('a.company_id', $companyId)
+            ->where('a.communication_channel_id', $channelId)
+            ->where('c.phone', $phone)
+            ->when($cursor, fn ($qq) => $qq->where('b.id', '<', $cursor))
+            ->orderByDesc('b.id')
+            ->limit($limit)
+            ->select([
+                'b.id as message_id',
+                'b.thread_id',
+                'b.item_type',
+                'b.item_content',
+                'b.create_date as message_create_date',
+                'b.origin as message_origin',
+                'b.external_id',
+                'c.name',
+                'c.phone',
+                DB::raw("
+                    case
+                        when coalesce(b.external_id, '') <> '' then 'USUARIO'
+                        else 'BOT'
+                    end as enviado_por
+                "),
+            ]);
+
+        $rows = $q->get();
+
+        // cursor = el último message_id del lote (como viene DESC, es el más viejo de este page)
+        $nextCursor = $rows->last()->message_id ?? null;
+
+        return response()->json([
+            'data' => $rows,
+            'next_cursor' => $nextCursor,
+        ]);
+    }
+
 }

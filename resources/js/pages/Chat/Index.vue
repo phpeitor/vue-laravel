@@ -16,6 +16,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName } = useTextFormat()
 
@@ -35,7 +51,7 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog'
 
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -75,10 +91,8 @@ const page = usePage()
 
 const companies = (page.props.companies ?? []) as { id: number; company_name: string }[]
 const channels = ref<{ id: number; channel_name: string }[]>([])
-
 const filtersOpen = ref(false)
 const q = ref('')
-
 const tz = getLocalTimeZone()
 
 const buildDefaultDates = () => {
@@ -132,6 +146,61 @@ const messagesHasMore = ref(true)
 
 const loadingThreads = ref(false)
 const loadingMessages = ref(false)
+
+/* ---------------------------
+   History
+---------------------------- */
+const historyOpen = ref(false)
+const historyLoading = ref(false)
+const historyRows = ref<MessageRow[]>([])
+const historyNextCursor = ref<number | null>(null)
+const historyHasMore = ref(true)
+
+const HISTORY_LIMIT = 100
+
+const openHistory = async () => {
+  const phone = activeThread.value?.phone
+  if (!phone) return
+
+  historyOpen.value = true
+  historyRows.value = []
+  historyNextCursor.value = null
+  historyHasMore.value = true
+
+  await fetchHistory()
+}
+
+const fetchHistory = async (opts?: { append?: boolean }) => {
+  const phone = activeThread.value?.phone
+  if (!phone) return
+  if (!filters.value.company_id || !filters.value.communication_channel_id) return
+
+  historyLoading.value = true
+  try {
+    const params: any = {
+      company_id: filters.value.company_id,
+      communication_channel_id: filters.value.communication_channel_id,
+      phone,
+      limit: HISTORY_LIMIT,
+    }
+
+    if (opts?.append && historyNextCursor.value) {
+      params.cursor = historyNextCursor.value
+    }
+
+    const res = await axios.get('/chat/history', { params })
+    const payload = res.data as { data: MessageRow[]; next_cursor: number | null }
+    const incoming = payload.data ?? []
+
+    if (opts?.append) historyRows.value.push(...incoming)
+    else historyRows.value = incoming
+
+    historyNextCursor.value = payload.next_cursor ?? null
+    historyHasMore.value = incoming.length === HISTORY_LIMIT
+  } finally {
+    historyLoading.value = false
+  }
+}
 
 /* ---------------------------
    Scroll helpers
@@ -716,9 +785,20 @@ const sendMessage = async () => {
                 <Button variant="outline" size="icon" title="Adjuntar (mock)">
                   <Paperclip class="h-5 w-5" />
                 </Button>
-                <Button variant="ghost" size="icon" title="Opciones">
-                  <MoreVertical class="h-5 w-5" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="icon" title="Opciones">
+                      <MoreVertical class="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem @select="openHistory">
+                      <Clock class="mr-2 h-4 w-4" />
+                      Historial mensajes
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </CardHeader>
@@ -778,7 +858,6 @@ const sendMessage = async () => {
 
           <Separator />
 
-          <!-- Composer -->
           <div class="p-3">
             <form class="flex items-center gap-2" @submit.prevent="sendMessage">
               <Input v-model="draft" placeholder="Escribe un mensaje…" class="h-11" />
@@ -791,5 +870,85 @@ const sendMessage = async () => {
         </Card>
       </div>
     </div>
+
+    <Sheet v-model:open="historyOpen">
+      <SheetContent side="right" class="w-full sm:max-w-[520px]">
+        <SheetHeader>
+          <SheetTitle>Historial por teléfono</SheetTitle>
+          <SheetDescription>
+            {{ activeThread?.name ?? '' }} — {{ activeThread?.phone ?? '' }}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div class="mt-4">
+          <div class="flex items-center justify-between">
+            <Badge variant="secondary">
+              Company: {{ filters.company_id }} / Canal: {{ filters.communication_channel_id }}
+            </Badge>
+
+            <Button
+              v-if="historyHasMore"
+              size="sm"
+              variant="outline"
+              :disabled="historyLoading"
+              @click="fetchHistory({ append: true })"
+            >
+              {{ historyLoading ? 'Cargando...' : 'Cargar más' }}
+            </Button>
+          </div>
+
+          <ScrollArea class="mt-3 h-[70vh] pr-2">
+            <div v-if="!historyRows.length && !historyLoading" class="text-sm text-muted-foreground p-2">
+              Sin historial
+            </div>
+
+            <div class="space-y-3">
+              <div
+                v-for="m in historyRows"
+                :key="`h-${m.message_id}`"
+                class="flex"
+                :class="m.enviado_por === 'USUARIO' ? 'justify-start' : 'justify-end'"
+              >
+                <div
+                  class="max-w-[78%] rounded-2xl px-4 py-2 text-sm shadow-sm overflow-hidden border"
+                  :class="m.enviado_por === 'USUARIO'
+                    ? 'bg-muted text-foreground'
+                    : 'bg-primary text-primary-foreground border-transparent'"
+                >
+                  <!-- Header -->
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                      <Badge
+                        :variant="m.enviado_por === 'USUARIO' ? 'default' : 'secondary'"
+                        class="h-6 w-6 p-0 inline-flex items-center justify-center rounded-full"
+                      >
+                        <User v-if="m.enviado_por === 'USUARIO'" class="h-3.5 w-3.5" />
+                        <Bot v-else class="h-3.5 w-3.5" />
+                      </Badge>
+
+                      <span class="text-xs opacity-70">#{{ m.thread_id }}</span>
+                    </div>
+
+                    <span class="text-xs opacity-70">
+                      {{ m.message_create_date ? new Date(m.message_create_date).toLocaleString() : '' }}
+                    </span>
+                  </div>
+
+                  <!-- Body -->
+                  <div
+                    class="mt-2 leading-relaxed break-words"
+                    v-html="formatWhatsappText(m.item_content ?? '')"
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="historyLoading" class="text-sm text-muted-foreground p-2">
+              Cargando...
+            </div>
+          </ScrollArea>
+        </div>
+      </SheetContent>
+    </Sheet>
   </AppLayout>
 </template>
