@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/tooltip'
 import { Switch } from '@/components/ui/switch'
 import EmojiPicker from 'vue3-emoji-picker'
-import 'vue3-emoji-picker/css'
 import { ref, nextTick, watch, computed  } from 'vue'
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 

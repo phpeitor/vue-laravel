@@ -51,6 +51,8 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog'
 
+import EmojiPicker from 'vue3-emoji-picker'
+
 import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
@@ -504,6 +506,48 @@ onBeforeUnmount(() => {
 ---------------------------- */
 const draft = ref('')
 const closingThreadId = ref<number | null>(null)
+const showEmojiPickerChat = ref(false)
+const draftInputRef = ref<any>(null)
+
+const toggleEmojiPickerChat = () => {
+  showEmojiPickerChat.value = !showEmojiPickerChat.value
+}
+
+const getDraftEl = (): HTMLInputElement | null => {
+  const r = draftInputRef.value
+  if (!r) return null
+
+  // Caso 1: el componente expone inputRef
+  if (r.inputRef instanceof HTMLInputElement) return r.inputRef
+
+  // Caso 2: buscar el input real dentro del componente
+  const el = r.$el as HTMLElement | undefined
+  return el?.querySelector('input') ?? null
+}
+
+const addEmojiToDraft = (emoji: any) => {
+  const emojiChar = emoji?.i
+  if (!emojiChar) return
+
+  const el = getDraftEl()
+  const current = draft.value ?? ''
+
+  const pos = el?.selectionStart ?? current.length
+  const start = current.slice(0, pos)
+  const end = current.slice(pos)
+
+  draft.value = `${start}${emojiChar}${end}`
+
+  nextTick(() => {
+    const input = getDraftEl()
+    if (!input) return
+    input.focus()
+    const nextPos = pos + emojiChar.length
+    input.selectionStart = input.selectionEnd = nextPos
+  })
+
+  showEmojiPickerChat.value = false
+}
 
 const closeThread = async (threadId: number) => {
   closingThreadId.value = threadId
@@ -859,7 +903,37 @@ const sendMessage = async () => {
 
           <div class="p-3">
             <form class="flex items-center gap-2" @submit.prevent="sendMessage">
-              <Input v-model="draft" placeholder="Escribe un mensaje…" class="h-11" />
+              <div class="relative flex-1">
+                <Input
+                  ref="draftInputRef"
+                  v-model="draft"
+                  placeholder="Escribe un mensaje…"
+                  class="h-11 pr-10"
+                />
+
+                <TooltipProvider :delayDuration="200">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <button
+                        type="button"
+                        @click="toggleEmojiPickerChat"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 bg-muted rounded-full p-1 hover:bg-muted/70"
+                        aria-label="Insertar emoji"
+                      >
+                        😊
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="end" :sideOffset="6">
+                      Insertar emoji
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <div v-if="showEmojiPickerChat" class="absolute bottom-12 right-0 z-50">
+                  <EmojiPicker @select="addEmojiToDraft" :native="true" />
+                </div>
+              </div>
+
               <Button type="submit" class="h-11" :disabled="!activeThreadId">
                 <Send class="mr-2 h-4 w-4" />
                 Enviar
