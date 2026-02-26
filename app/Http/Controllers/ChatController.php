@@ -26,66 +26,125 @@ class ChatController extends Controller
 
     public function threads(Request $request)
     {
-        // 1) Permiso
         $this->authorize('viewAny', Thread::class);
 
-        // 2) Validación de params
         $data = $request->validate([
             'company_id' => ['required', 'integer'],
             'communication_channel_id' => ['required', 'integer'],
             'date_start' => ['nullable', 'date'],
             'date_end' => ['nullable', 'date'],
             'q' => ['nullable', 'string'],
+            'q_by' => ['nullable', 'in:ALL,PHONE,SENDER_ID'],
+            'thread_status' => ['nullable', 'in:ALL,OPEN,CLOSED'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
             'cursor' => ['nullable', 'integer'],
+            'phone' => ['nullable', 'string'], // ✅ búsqueda global por teléfono/sender_id
         ]);
 
-        // 3) Normalización
         $companyId = (int) $data['company_id'];
         $channelId = (int) $data['communication_channel_id'];
         $dateStart = isset($data['date_start']) ? Carbon::parse($data['date_start'])->startOfDay() : null;
         $dateEnd   = isset($data['date_end']) ? Carbon::parse($data['date_end'])->endOfDay() : null;
         $q         = trim($data['q'] ?? '');
+        $qBy       = strtoupper(trim($data['q_by'] ?? 'ALL'));
+        $status    = strtoupper(trim($data['thread_status'] ?? '')); // '', OPEN, CLOSED, ALL
         $limit     = (int) ($data['limit'] ?? 60);
         $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
 
-        // 4) Base query: threads filtrados por company y canal
-        //    (OJO: aquí NO aplicamos cursor)
+        // ✅ NUEVO: si viene phone => buscar global (ignorando fecha/status/q)
+        $phone = trim($data['phone'] ?? '');
+
+        // 4) Base query
         $base = DB::table('threads as a')
             ->where('a.company_id', $companyId)
             ->where('a.communication_channel_id', $channelId);
 
-        // 5) Filtro por fecha (sobre mensajes) pero manteniendo OPEN
-        if ($dateStart && $dateEnd) {
-            $base->where(function ($w) use ($dateStart, $dateEnd) {
-                $w->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+        // ✅ MODO BÚSQUEDA GLOBAL POR TELÉFONO/SENDER_ID (solo company+canal)
+        if ($phone !== '') {
+            $base->where(function ($w) use ($phone) {
+                // threads.sender_id
+                $w->where('a.sender_id', 'ilike', "%{$phone}%")
+                // customers.phone (a través de messages)
+                ->orWhereExists(function ($sub) use ($phone) {
                     $sub->select(DB::raw(1))
-                        ->from('messages as b')
-                        ->whereColumn('b.thread_id', 'a.id')
-                        ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
-                })->orWhere('a.thread_status', 'OPEN');
+                        ->from('messages as bq')
+                        ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
+                        ->whereColumn('bq.thread_id', 'a.id')
+                        ->where('cq.phone', 'ilike', "%{$phone}%");
+                });
             });
         } else {
-            $base->where('a.thread_status', 'OPEN');
-        }
+            // ✅ MODO NORMAL (fecha/status + q/q_by)
 
-        // 6) Búsqueda opcional (nombre/phone/contenido)
-        if ($q !== '') {
-            $base->whereExists(function ($sub) use ($q) {
-                $sub->select(DB::raw(1))
-                    ->from('messages as bq')
-                    ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
-                    ->whereColumn('bq.thread_id', 'a.id')
-                    ->where(function ($w2) use ($q) {
-                        $w2->where('cq.name', 'ilike', "%{$q}%")
-                        ->orWhere('cq.phone', 'ilike', "%{$q}%")
-                        ->orWhere('bq.item_content', 'ilike', "%{$q}%");
+            $hasDates = ($dateStart && $dateEnd);
+
+            // 5) Filtro OPEN/CLOSED/ALL + lógica de fechas
+            if ($hasDates) {
+                if ($status === 'OPEN') {
+                    $base->where('a.thread_status', 'OPEN');
+                } elseif ($status === 'CLOSED') {
+                    $base->where('a.thread_status', 'CLOSED')
+                        ->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+                            $sub->select(DB::raw(1))
+                                ->from('messages as b')
+                                ->whereColumn('b.thread_id', 'a.id')
+                                ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
+                        });
+                } else {
+                    // ALL o vacío => (mensajes en rango) OR (OPEN)
+                    $base->where(function ($w) use ($dateStart, $dateEnd) {
+                        $w->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+                            $sub->select(DB::raw(1))
+                                ->from('messages as b')
+                                ->whereColumn('b.thread_id', 'a.id')
+                                ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
+                        })->orWhere('a.thread_status', 'OPEN');
                     });
-            });
+                }
+            } else {
+                if ($status === 'CLOSED') $base->where('a.thread_status', 'CLOSED');
+                elseif ($status === 'ALL') { /* sin filtro */ }
+                else $base->where('a.thread_status', 'OPEN'); // default
+            }
+
+            // 6) Búsqueda opcional por ALL / PHONE / SENDER_ID
+            if ($q !== '') {
+                $base->where(function ($w) use ($q, $qBy) {
+                    if ($qBy === 'SENDER_ID') {
+                        $w->where('a.sender_id', 'ilike', "%{$q}%");
+                        return;
+                    }
+
+                    if ($qBy === 'PHONE') {
+                        $w->where('a.sender_id', 'ilike', "%{$q}%")
+                        ->orWhereExists(function ($sub) use ($q) {
+                            $sub->select(DB::raw(1))
+                                ->from('messages as bq')
+                                ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
+                                ->whereColumn('bq.thread_id', 'a.id')
+                                ->where('cq.phone', 'ilike', "%{$q}%");
+                        });
+                        return;
+                    }
+
+                    // ALL
+                    $w->where('a.sender_id', 'ilike', "%{$q}%")
+                    ->orWhereExists(function ($sub) use ($q) {
+                        $sub->select(DB::raw(1))
+                            ->from('messages as bq')
+                            ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
+                            ->whereColumn('bq.thread_id', 'a.id')
+                            ->where(function ($w2) use ($q) {
+                                $w2->where('cq.name', 'ilike', "%{$q}%")
+                                    ->orWhere('cq.phone', 'ilike', "%{$q}%")
+                                    ->orWhere('bq.item_content', 'ilike', "%{$q}%");
+                            });
+                    });
+                });
+            }
         }
 
-        // 7) Subquery: last message + customer + row_number (dedupe por cliente)
-        //    rn = 1 => el thread más reciente para ese cliente en ese canal+company
+        // 7) Subquery: last message + customer + row_number (dedupe)
         $sub = $base
             ->leftJoin(DB::raw("
                 LATERAL (
@@ -104,6 +163,7 @@ class ChatController extends Controller
             ->select([
                 'a.id as thread_id',
                 'a.thread_status',
+                'a.sender_id',
                 'a.first_conversation_date',
                 'a.last_conversation_date',
                 'c.name',
@@ -113,7 +173,7 @@ class ChatController extends Controller
                 DB::raw("
                     ROW_NUMBER() OVER (
                         PARTITION BY
-                            c.id,               -- dedupe por customer
+                            COALESCE(c.id::text, a.sender_id, a.id::text),
                             a.company_id,
                             a.communication_channel_id
                         ORDER BY a.id DESC
@@ -121,8 +181,7 @@ class ChatController extends Controller
                 "),
             ]);
 
-        // 8) Query final: nos quedamos solo con rn=1 (uno por cliente)
-        //    y recién aquí aplicamos cursor para paginar sin repetir contactos
+        // 8) Query final
         $rowsQuery = DB::query()
             ->fromSub($sub, 't')
             ->where('t.rn', 1)
@@ -131,11 +190,8 @@ class ChatController extends Controller
             ->limit($limit);
 
         $rows = $rowsQuery->get();
-
-        // 9) next_cursor
         $nextCursor = $rows->last()->thread_id ?? null;
 
-        // 10) Response
         return response()->json([
             'data' => $rows,
             'next_cursor' => $nextCursor,

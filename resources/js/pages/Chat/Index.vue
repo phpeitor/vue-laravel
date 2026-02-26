@@ -32,12 +32,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+const breadcrumbs = [
+  {
+    title: 'Chat',
+    href: '/chat',
+  },
+  {
+    title: 'Bandeja de entrada',
+    href: '/chat',
+  },
+]
+
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName, formatPE } = useTextFormat()
-
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText } = useWhatsappFormatter()
-
 import { Label } from '@/components/ui/label'
 import { RangeCalendar } from '@/components/ui/range-calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -52,8 +61,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2 } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -62,6 +70,7 @@ import axios from 'axios'
 type ThreadSummary = {
   thread_id: number
   thread_status: string
+  sender_id: string | null // ✅
   name: string | null
   phone: string | null
   last_message: string | null
@@ -121,11 +130,16 @@ const defaultCompanyId = computed<number | ''>(() => {
   return (by1 ?? companies[0]?.id ?? '') as any
 })
 
+type ThreadStatusFilter = 'OPEN' | 'CLOSED' | 'ALL'
+type SearchBy = 'ALL' | 'PHONE' | 'SENDER_ID'
+
 const filters = ref({
   company_id: defaultCompanyId.value as number | '',
   communication_channel_id: 3 as number | '',
   date_start: startStr,
   date_end: endStr,
+  thread_status: 'OPEN' as ThreadStatusFilter,
+  q_by: 'ALL' as SearchBy,
 })
 
 const formattedRange = computed(() => {
@@ -148,6 +162,21 @@ const messagesHasMore = ref(true)
 
 const loadingThreads = ref(false)
 const loadingMessages = ref(false)
+
+const refreshThreads = async () => {
+  const keep = activeThreadId.value
+  threadsNextCursor.value = null
+  await fetchThreads()
+
+  if (keep && threadsList.value.some(t => t.thread_id === keep)) {
+    // fuerza recarga del thread (solo si quieres)
+    activeThreadId.value = null
+    await nextTick()
+    activeThreadId.value = keep
+  } else if (threadsList.value.length) {
+    activeThreadId.value = threadsList.value[0].thread_id
+  }
+}
 
 /* ---------------------------
    History
@@ -238,8 +267,11 @@ const activeMessages = computed<UiMessage[]>(() => {
 const filteredThreads = computed(() => {
   const term = q.value.trim().toLowerCase()
   if (!term) return threadsList.value
+
   return threadsList.value.filter(t =>
-    `${t.name ?? ''} ${t.phone ?? ''} ${t.last_message ?? ''}`.toLowerCase().includes(term)
+    `${t.sender_id ?? ''} ${t.name ?? ''} ${t.phone ?? ''} ${t.last_message ?? ''}`
+      .toLowerCase()
+      .includes(term)
   )
 })
 
@@ -259,6 +291,12 @@ watch(dateRange, (range) => {
 ---------------------------- */
 const applyFilters = async () => {
   filtersOpen.value = false
+
+  activeThreadId.value = null
+  messagesList.value = []
+  messagesNextCursor.value = null
+  threadsNextCursor.value = null
+
   await fetchThreads()
 }
 
@@ -304,22 +342,68 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
   }
 }
 
+
+const phoneSearchOpen = ref(false)
+const phoneSearchDraft = ref('')
+const phoneSearchApplied = ref('')
+
+const isPhoneSearchActive = computed(() => phoneSearchApplied.value.trim().length > 0)
+
+const openPhoneSearchModal = () => {
+  phoneSearchDraft.value = phoneSearchApplied.value
+  phoneSearchOpen.value = true
+}
+
+const applyPhoneSearch = async () => {
+  phoneSearchApplied.value = phoneSearchDraft.value.trim()
+  phoneSearchOpen.value = false
+
+  activeThreadId.value = null
+  messagesList.value = []
+  messagesNextCursor.value = null
+  threadsNextCursor.value = null
+  q.value = ''
+
+  await fetchThreads()
+}
+
+const clearPhoneSearch = async () => {
+  phoneSearchApplied.value = ''
+  phoneSearchDraft.value = ''
+
+  activeThreadId.value = null
+  messagesList.value = []
+  messagesNextCursor.value = null
+  threadsNextCursor.value = null
+  q.value = ''
+
+  await fetchThreads()
+}
+
 const fetchThreads = async (opts?: { append?: boolean }) => {
   if (!filters.value.company_id || !filters.value.communication_channel_id) return
 
   loadingThreads.value = true
   try {
     const params: any = {
-      ...filters.value,
-      q: q.value || undefined,
+      company_id: filters.value.company_id,
+      communication_channel_id: filters.value.communication_channel_id,
       limit: 60,
     }
 
-    if (opts?.append && threadsNextCursor.value) {
-      params.cursor = threadsNextCursor.value
+    // ✅ Phone search: ignora date/status
+    if (isPhoneSearchActive.value) {
+      params.phone = phoneSearchApplied.value
     } else {
-      params.cursor = undefined
+      // ✅ modo normal (si quieres mantener tus filtros normales)
+      Object.assign(params, {
+        date_start: filters.value.date_start,
+        date_end: filters.value.date_end,
+        thread_status: filters.value.thread_status,
+      })
     }
+
+    if (opts?.append && threadsNextCursor.value) params.cursor = threadsNextCursor.value
 
     const res = await axios.get('/chat/threads', { params })
     const payload = res.data as { data: ThreadSummary[]; next_cursor: number | null }
@@ -349,6 +433,10 @@ const resetFilters = async () => {
     start: parseDate(startStr),
     end: parseDate(endStr),
   }
+
+  filters.value.thread_status = 'OPEN'
+  filters.value.q_by = 'ALL'
+  q.value = ''
 }
 
 /* ---------------------------
@@ -478,10 +566,18 @@ watch(activeThreadId, async (id) => {
 
 const canFetch = computed(() => !!filters.value.company_id && !!filters.value.communication_channel_id)
 
+let searchTimer: number | null = null
+
+onBeforeUnmount(() => {
+  if (searchTimer) window.clearTimeout(searchTimer)
+})
+
 watch(
   () => [filters.value.company_id, filters.value.communication_channel_id, filters.value.date_start, filters.value.date_end],
   async () => {
     if (!canFetch.value) return
+    if (filtersOpen.value) return // ✅ clave: NO buscar mientras editas en el modal
+
     activeThreadId.value = null
     messagesList.value = []
     messagesNextCursor.value = null
@@ -603,8 +699,7 @@ const sendMessage = async () => {
 
 <template>
   <Head title="Chat" />
-
-  <AppLayout>
+  <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
         <!-- Sidebar -->
@@ -614,7 +709,17 @@ const sendMessage = async () => {
               <span>Chats</span>
 
               <div class="flex items-center gap-1">
-                <!-- ✅ FILTROS ARRIBA -->
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Actualizar threads"
+                  :disabled="loadingThreads || !canFetch"
+                  @click="refreshThreads"
+                >
+                  <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
+                  <RefreshCw v-else class="h-4 w-4" />
+                </Button>
+  
                 <Dialog v-model:open="filtersOpen">
                   <DialogTrigger as-child>
                     <Button variant="outline" size="icon" title="Filtrar conversaciones">
@@ -680,10 +785,18 @@ const sendMessage = async () => {
                             />
                           </PopoverContent>
                         </Popover>
+                      </div>
 
-                        <p class="text-xs text-muted-foreground">
-                          Aplica: (create_date between inicio y fin) o status = OPEN
-                        </p>
+                      <div class="grid gap-2">
+                        <Label>Estado</Label>
+                        <select
+                          v-model="filters.thread_status"
+                          class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3"
+                        >
+                          <option value="OPEN">OPEN</option>
+                          <option value="CLOSED">CLOSED</option>
+                          <option value="ALL">ALL</option>
+                        </select>
                       </div>
                     </div>
 
@@ -701,29 +814,55 @@ const sendMessage = async () => {
                   </DialogContent>
                 </Dialog>
 
-                <Button variant="ghost" size="icon">
-                  <MoreVertical class="h-5 w-5" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="icon" title="Opciones">
+                      <MoreVertical class="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem @select="openPhoneSearchModal">
+                      Buscar por teléfono
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem v-if="isPhoneSearchActive" @select="clearPhoneSearch">
+                      Limpiar búsqueda
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                
               </div>
             </CardTitle>
 
-            <div class="relative mt-2">
-              <Search class="absolute left-3 top-2.5 h-4 w-4 opacity-60" />
-              <Input v-model="q" class="pl-9" placeholder="Buscar conversación" />
+            <div class="mt-2 flex items-center gap-2">
+              <div class="relative flex-1">
+                <Search class="absolute left-3 top-2.5 h-4 w-4 opacity-60" />
+                <Input v-model="q" class="pl-9" placeholder="Buscar conversación" />
+              </div>
             </div>
 
             <div class="mt-2 flex flex-wrap gap-2">
               <Badge variant="secondary">Company: {{ filters.company_id || '' }}</Badge>
               <Badge variant="secondary">Canal: {{ filters.communication_channel_id || '' }}</Badge>
-              <Badge variant="secondary">{{ formattedRange }}</Badge>
+
+              <Badge v-if="isPhoneSearchActive" variant="secondary">
+                Búsqueda: {{ phoneSearchApplied }}
+              </Badge>
+
+              <template v-else>
+                <Badge variant="secondary">{{ formattedRange }}</Badge>
+                <Badge variant="secondary">Estado: {{ filters.thread_status }}</Badge>
+              </template>
             </div>
           </CardHeader>
 
           <CardContent class="pt-0 flex-1 overflow-hidden">
             <ScrollArea class="h-full pr-2">
               <div class="space-y-2">
-                <div v-if="loadingThreads" class="text-sm text-muted-foreground p-2">
-                    Cargando...
+                <div v-if="loadingThreads" class="flex items-center gap-2 text-sm text-muted-foreground p-2">
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                  Cargando...
                 </div>
 
                 <button
@@ -1023,5 +1162,28 @@ const sendMessage = async () => {
         </div>
       </SheetContent>
     </Sheet>
+
+    <Dialog v-model:open="phoneSearchOpen">
+      <DialogContent class="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Buscar por teléfono</DialogTitle>
+          <DialogDescription>
+            Busca en threads.sender_id o customers.phone (ignora fecha/estado).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-2 py-2">
+          <Label>Teléfono / Sender ID</Label>
+          <Input v-model="phoneSearchDraft" placeholder="Ej: 51942890820" />
+        </div>
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="outline" @click="phoneSearchOpen = false">Cancelar</Button>
+          <Button type="button" :disabled="!phoneSearchDraft.trim()" @click="applyPhoneSearch">
+            Buscar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </AppLayout>
 </template>
