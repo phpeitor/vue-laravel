@@ -411,7 +411,7 @@ function openTestTemplateDialog(templateId) {
 }
 
 function renderBodyWithInputs(text) {
-  let parts = text.split(/({{\d+}})/g)
+  const parts = text.split(/({{\d+}})/g)
 
   return parts.map((part, index) => {
     const matchIndex = testInputs.value.findIndex(p => p.key === part)

@@ -258,14 +258,12 @@ const onFileChange = (e: Event) => {
 }
 
 const canUploadFile = computed(() => {
-  return !!form.template && variableCount.value > 0
+  return !!form.template
 })
-
 </script>
 
 <template>
   <Head title="Campaigns" />
-
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -478,8 +476,13 @@ const canUploadFile = computed(() => {
                               </template>
 
                               <template v-else>
-                                La primera columna debe ser <b>telefono</b>.  
-                                El archivo debe contener <b>{{ variableCount }}</b> columnas de variables.
+                                La primera columna debe ser <b>telefono</b>.
+                                <span v-if="variableCount > 0">
+                                  El archivo debe contener <b>{{ variableCount }}</b> columnas de variables.
+                                </span>
+                                <span v-else>
+                                  La plantilla no tiene variables: el Excel debe contener solo <b>telefono</b>.
+                                </span>
                               </template>
                             </p>
 

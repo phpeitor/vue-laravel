@@ -313,12 +313,6 @@ class CampaignController extends Controller
         $file = $request->file('file');
         $variableCount = $this->extractVariableCountFromTemplate($template);
 
-        if ($variableCount <= 0) {
-            throw ValidationException::withMessages([
-                'template' => 'La plantilla seleccionada no tiene variables en el cuerpo (BODY).',
-            ]);
-        }
-
         try {
             $spreadsheet = IOFactory::load($file->getPathname());
         } catch (SpreadsheetReaderException $e) {
@@ -328,16 +322,17 @@ class CampaignController extends Controller
         }
 
         $sheet = $spreadsheet->getActiveSheet();
-        $highestColumn = $sheet->getHighestColumn(); 
+        $highestColumn = $sheet->getHighestColumn();
         $headerRow = $sheet->rangeToArray("A1:{$highestColumn}1", null, true, false)[0] ?? [];
 
         $headerRow = array_values(array_map(function ($v) {
             return is_string($v) ? trim(mb_strtolower($v)) : '';
         }, $headerRow));
 
-        if (count($headerRow) < 2) {
+        // ✅ Debe existir al menos la columna telefono
+        if (count($headerRow) < 1) {
             throw ValidationException::withMessages([
-                'file' => 'El Excel debe tener encabezados en la fila 1 (telefono + variables).',
+                'file' => 'El Excel debe tener encabezados en la fila 1.',
             ]);
         }
 
@@ -347,11 +342,19 @@ class CampaignController extends Controller
             ]);
         }
 
-        $expectedColumns = 1 + $variableCount;
+        // ✅ Esperado: 1 + variables (si variables=0 => solo telefono)
+        $expectedColumns = 1 + max(0, (int)$variableCount);
 
         if (count($headerRow) !== $expectedColumns) {
+            if ($variableCount > 0) {
+                throw ValidationException::withMessages([
+                    'file' => "El Excel debe tener {$expectedColumns} columnas (telefono + {$variableCount} variables).",
+                ]);
+            }
+
+            // variableCount = 0
             throw ValidationException::withMessages([
-                'file' => "El Excel debe tener {$expectedColumns} columnas (telefono + {$variableCount} variables).",
+                'file' => 'El Excel debe tener 1 columna: "telefono". (La plantilla no tiene variables)',
             ]);
         }
     }

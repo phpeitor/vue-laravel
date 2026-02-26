@@ -36,15 +36,15 @@ onMounted(() => {
     //console.log("Usuarios:", props.users.data);
 });
 
-let pageNumber = ref(1),
+const pageNumber = ref(1),
     searchTerm = ref(usePage().props.search ?? "");
-let sortDirection = ref('asc')
+const sortDirection = ref('asc')
 
 const pageNumberUpdated = (link) => {
     pageNumber.value = link.url.split("=")[1];
 };
 
-let usersUrl = computed(() => {
+const usersUrl = computed(() => {
     const url = new URL(route("users.index"));
     url.searchParams.set("page", pageNumber.value);
 
