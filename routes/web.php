@@ -76,6 +76,12 @@ Route::middleware(['auth', 'permission:chat'])->group(function () {
     Route::get('/chat/messages/{threadId}', [ChatController::class, 'messages'])->name('chat.messages'); 
 });
 
+Route::middleware(['auth'])->patch('/chat/threads/{thread}/close', [ChatController::class, 'closeThread']);
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/chat/history', [ChatController::class, 'historyByPhone']);
+});
+
 /*
 Route::get(
     '/campaigns/recipients/{recipient}/test-send',
