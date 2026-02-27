@@ -42,11 +42,11 @@ const breadcrumbs = [
     href: '/chat',
   },
 ]
-
+import RichDraftInput from '@/components/RichDraftInput.vue'
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName, formatPE } = useTextFormat()
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
-const { formatWhatsappText } = useWhatsappFormatter()
+const { formatWhatsappText, htmlToWhatsappText } = useWhatsappFormatter()
 import { Label } from '@/components/ui/label'
 import { RangeCalendar } from '@/components/ui/range-calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -61,7 +61,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2 } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -155,6 +155,12 @@ const activeThread = computed<ThreadSummary | null>(() => {
   if (!activeThreadId.value) return null
   return threadsList.value.find(t => t.thread_id === activeThreadId.value) ?? null
 })
+
+const isThreadClosed = computed(() => {
+  return (activeThread.value?.thread_status ?? '').toUpperCase() === 'CLOSED'
+})
+
+const draftDisabled = computed(() => !activeThreadId.value || isThreadClosed.value)
 
 const messagesList = ref<MessageRow[]>([])
 const messagesNextCursor = ref<number | null>(null)
@@ -341,7 +347,6 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
     loadingMessages.value = false
   }
 }
-
 
 const phoneSearchOpen = ref(false)
 const phoneSearchDraft = ref('')
@@ -600,48 +605,40 @@ onBeforeUnmount(() => {
 /* ---------------------------
    Send message
 ---------------------------- */
-const draft = ref('')
+const onEditorSubmit = async (html: string) => {
+  if (draftDisabled.value) return
+  // mandamos el texto convertido DIRECTO (sin depender del computed, evita race)
+  const msg = htmlToWhatsappText(html).trim()
+  if (!msg) return
+
+  // reutiliza tu lógica: te recomiendo extraer a sendMessageWithText(msg)
+  await sendMessageWithText(msg)
+}
+
+const draftText = computed(() => htmlToWhatsappText(draftHtml.value))
+const canSend = computed(() => !draftDisabled.value && draftText.value.trim().length > 0)
+
+const draftHtml = ref('')
+const draftEditorRef = ref<any>(null)
 const closingThreadId = ref<number | null>(null)
 const showEmojiPickerChat = ref(false)
-const draftInputRef = ref<any>(null)
 
 const toggleEmojiPickerChat = () => {
+  if (draftDisabled.value) return
   showEmojiPickerChat.value = !showEmojiPickerChat.value
 }
 
-const getDraftEl = (): HTMLInputElement | null => {
-  const r = draftInputRef.value
-  if (!r) return null
-
-  // Caso 1: el componente expone inputRef
-  if (r.inputRef instanceof HTMLInputElement) return r.inputRef
-
-  // Caso 2: buscar el input real dentro del componente
-  const el = r.$el as HTMLElement | undefined
-  return el?.querySelector('input') ?? null
+const applyDraftFormat = (kind: 'bold' | 'italic' | 'underline') => {
+  if (draftDisabled.value) return
+  if (kind === 'bold') draftEditorRef.value?.toggleBold?.()
+  if (kind === 'italic') draftEditorRef.value?.toggleItalic?.()
+  if (kind === 'underline') draftEditorRef.value?.toggleUnderline?.()
 }
 
 const addEmojiToDraft = (emoji: any) => {
   const emojiChar = emoji?.i
   if (!emojiChar) return
-
-  const el = getDraftEl()
-  const current = draft.value ?? ''
-
-  const pos = el?.selectionStart ?? current.length
-  const start = current.slice(0, pos)
-  const end = current.slice(pos)
-
-  draft.value = `${start}${emojiChar}${end}`
-
-  nextTick(() => {
-    const input = getDraftEl()
-    if (!input) return
-    input.focus()
-    const nextPos = pos + emojiChar.length
-    input.selectionStart = input.selectionEnd = nextPos
-  })
-
+  draftEditorRef.value?.insertText?.(emojiChar)
   showEmojiPickerChat.value = false
 }
 
@@ -661,10 +658,10 @@ const closeThread = async (threadId: number) => {
   }
 }
 
-const sendMessage = async () => {
+const sendMessageWithText = async (msg: string) => {
   if (!activeThreadId.value) return
-  const msg = draft.value.trim()
-  if (!msg) return
+  if (isThreadClosed.value) return
+  if (!msg.trim()) return
 
   const threadId = activeThreadId.value
   const optimisticId = `tmp-${Date.now()}`
@@ -681,7 +678,8 @@ const sendMessage = async () => {
   } as any)
 
   nextTick(() => scrollToBottom())
-  draft.value = ''
+
+  draftHtml.value = '' // limpia editor
 
   try {
     await axios.post(`/api/chat/threads/${threadId}/reply`, {
@@ -689,11 +687,16 @@ const sendMessage = async () => {
       messageType: 'text',
       userId: 1,
     },{
-        headers: socketId ? { 'X-Socket-Id': socketId } : {}
+      headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
   } catch (e) {
     console.error(e)
   }
+}
+
+const sendMessage = async () => {
+  const msg = draftText.value.trim()
+  await sendMessageWithText(msg)
 }
 </script>
 
@@ -1043,37 +1046,90 @@ const sendMessage = async () => {
           <div class="p-3">
             <form class="flex items-center gap-2" @submit.prevent="sendMessage">
               <div class="relative flex-1">
-                <Input
-                  ref="draftInputRef"
-                  v-model="draft"
-                  placeholder="Escribe un mensaje…"
-                  class="h-11 pr-10"
+                <RichDraftInput
+                  ref="draftEditorRef"
+                  v-model="draftHtml"
+                  :disabled="draftDisabled"
+                  :placeholder="draftDisabled && activeThreadId ? 'Conversación cerrada' : 'Escribe un mensaje…'"
+                  class="pr-36"
+                  @submit="onEditorSubmit" 
                 />
 
-                <TooltipProvider :delayDuration="200">
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <button
-                        type="button"
-                        @click="toggleEmojiPickerChat"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 bg-muted rounded-full p-1 hover:bg-muted/70"
-                        aria-label="Insertar emoji"
-                      >
-                        😊
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" align="end" :sideOffset="6">
-                      Insertar emoji
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <TooltipProvider :delayDuration="200">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('bold')"
+                        >
+                          <Bold class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Negrita</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('italic')"
+                        >
+                          <Italic class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Cursiva</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('underline')"
+                        >
+                          <Underline class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Subrayado</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <button
+                          type="button"
+                          :disabled="draftDisabled"
+                          @click="toggleEmojiPickerChat"
+                          class="h-8 w-8 flex items-center justify-center bg-muted rounded-full hover:bg-muted/70 disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label="Insertar emoji"
+                        >
+                          😊
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="end" :sideOffset="6">
+                        Insertar emoji
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
 
                 <div v-if="showEmojiPickerChat" class="absolute bottom-12 right-0 z-50">
                   <EmojiPicker @select="addEmojiToDraft" :native="true" />
                 </div>
               </div>
 
-              <Button type="submit" class="h-11" :disabled="!activeThreadId">
+              <Button type="submit" class="h-11" :disabled="!canSend">
                 <Send class="mr-2 h-4 w-4" />
                 Enviar
               </Button>
