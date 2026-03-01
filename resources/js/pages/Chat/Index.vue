@@ -82,6 +82,8 @@ type MessageRow = {
   thread_id: number
   item_type: string
   item_content: string
+  final_content?: any            // ✅ nuevo
+  template_components?: any      // ✅ opcional
   message_create_date: string | null
   message_origin?: string | null
   external_id?: string | null
@@ -184,6 +186,36 @@ const refreshThreads = async () => {
   }
 }
 
+const extractTemplateText = (components: any): string => {
+  if (!Array.isArray(components)) return ''
+
+  const header = components.find((c: any) => c?.type === 'HEADER' && c?.text)?.text
+  const body = components.find((c: any) => c?.type === 'BODY' && c?.text)?.text
+
+  // botones (si algún template los guarda así)
+  let buttons = ''
+  const btnComp = components.find((c: any) => c?.type === 'BUTTONS' && Array.isArray(c?.buttons))
+  if (btnComp) {
+    const texts = (btnComp.buttons as any[])
+      .map((b) => b?.text)
+      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+
+    if (texts.length) buttons = `\n${texts.map((t: string) => `🔘 ${t}`).join('\n')}`
+  }
+
+  return [header, body].filter(Boolean).join('\n') + buttons
+}
+
+const getMessagePlainText = (m: MessageRow): string => {
+  if (m.item_type === 'template') {
+    const comps = m.final_content ?? m.template_components
+    const txt = extractTemplateText(comps)
+    // fallback si no encontró template en DB
+    return txt || (m.item_content ?? '')
+  }
+  return m.item_content ?? ''
+}
+
 /* ---------------------------
    History
 ---------------------------- */
@@ -257,7 +289,7 @@ const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
     const created = formatPE(m.message_create_date)
-    const raw = m.item_content ?? ''
+    const raw = getMessagePlainText(m)
     const formatted = raw ? formatWhatsappText(raw) : ''
 
     return {
@@ -1205,7 +1237,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
-                    v-html="formatWhatsappText(m.item_content ?? '')"
+                    v-html="formatWhatsappText(getMessagePlainText(m) ?? '')"
                   ></div>
                 </div>
               </div>

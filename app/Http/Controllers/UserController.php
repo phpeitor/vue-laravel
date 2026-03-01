@@ -10,6 +10,8 @@ use App\Http\Requests\UpdateUserRequest;
 use Spatie\Permission\Models\Role; 
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
+use App\Models\CommunicationChannel;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class UserController extends Controller
@@ -63,20 +65,51 @@ class UserController extends Controller
             return redirect()->route('error.403'); 
         }
 
+        $channels = DB::table('communication_channels as a')
+            ->leftJoin('companies as b', 'a.company_id', '=', 'b.id')
+            ->where('a.status', 'ACTIVO')
+            ->orderBy('b.company_name', 'asc')
+            ->selectRaw("
+                a.id,
+                a.company_id,
+                b.company_name,
+                UPPER(
+                    case
+                        when a.channel_name like '519%' then b.company_name || ' - ' || a.channel_name
+                        else a.channel_name
+                    end
+                ) as channel_name
+            ")
+            ->get();
+
         return inertia('User/Create', [
-            'roles' => Role::pluck('name')
+            'roles' => Role::pluck('name'),
+            'channels' => $channels,
         ]);
     }
 
     public function store(StoreUserRequest $request)
     {
-
         if (!auth()->user()->can('add user')) {
             abort(403, 'User does not have the right permissions');
         }
 
         $user = User::create($request->validated());
         $user->assignRole($request->role); 
+        $selectedIds = $request->input('channels', []);
+
+        if (!empty($selectedIds)) {
+            $rows = CommunicationChannel::query()
+                ->whereIn('id', $selectedIds)
+                ->get(['id', 'company_id']);
+
+            $syncData = $rows->mapWithKeys(fn ($ch) => [
+                $ch->id => ['company_id' => $ch->company_id],
+            ])->toArray();
+
+            $user->communicationChannels()->sync($syncData);
+        }
+
         return redirect()->route('users.index');
     }
 
@@ -92,7 +125,6 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user)
     {
-
         $validated = $request->validated();
         $user->name = $validated['name'];
         $user->email = $validated['email'];
