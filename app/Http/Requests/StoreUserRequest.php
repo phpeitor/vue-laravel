@@ -27,6 +27,11 @@ class StoreUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', 'unique:users_laravel,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'exists:roles,name'],
+            'channels' => ['nullable', 'array'],
+            'channels.*' => [
+                'integer',
+                Rule::exists('communication_channels', 'id')->where('status', 'ACTIVO'),
+            ],
         ];
     }
 

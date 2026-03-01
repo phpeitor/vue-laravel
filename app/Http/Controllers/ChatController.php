@@ -211,25 +211,45 @@ class ChatController extends Controller
         $cursor = isset($data['cursor']) ? (int) $data['cursor'] : null;
 
         $q = DB::table('messages as b')
-            ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
-            ->select([
-                'b.id as message_id',
-                'b.thread_id',
-                'b.item_type',
-                'b.item_content',
-                'b.create_date as message_create_date',
-                'b.origin as message_origin',
-                'b.external_id',
-                'c.name',
-                'c.phone',
-                DB::raw("
-                    case
-                        when coalesce(b.external_id, '') <> '' then 'USUARIO'
-                        else 'BOT'
-                    end as enviado_por
-                "),
-            ])
-            ->where('b.thread_id', $threadId);
+        ->join('threads as a', 'a.id', '=', 'b.thread_id') // ✅ para company/canal
+        ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
+        ->leftJoin('message_templates as mt', function ($join) {
+            $join->on('mt.name', '=', DB::raw("
+                CASE
+                WHEN b.item_type = 'template'
+                THEN (b.item_content::jsonb)->>'templateName'
+                ELSE NULL
+                END
+            "))
+            ->on('mt.company_id', '=', 'a.company_id') 
+            ->on('mt.communication_channel_id', '=', 'a.communication_channel_id')
+            ->where('mt.status_talina', true);
+        })
+        ->select([
+            'b.id as message_id',
+            'b.thread_id',
+            'b.item_type',
+            'b.item_content',
+            'b.create_date as message_create_date',
+            'b.origin as message_origin',
+            'b.external_id',
+            'c.name',
+            'c.phone',
+            'mt.components as template_components',
+            DB::raw("
+                case
+                    when b.item_type = 'template' then mt.components
+                    else to_jsonb(b.item_content)
+                end as final_content
+            "),
+            DB::raw("
+                case
+                    when coalesce(b.external_id, '') <> '' then 'USUARIO'
+                    else 'BOT'
+                end as enviado_por
+            "),
+        ])
+        ->where('b.thread_id', $threadId);
 
         if ($cursor) {
             $q->where('b.id', '<', $cursor);
@@ -240,6 +260,12 @@ class ChatController extends Controller
             ->get()
             ->reverse()
             ->values();
+
+        $rows->transform(function ($r) {
+            $r->template_components = $r->template_components ? json_decode($r->template_components, true) : null;
+            $r->final_content = $r->final_content ? json_decode($r->final_content, true) : null;
+            return $r;
+        });
 
         $nextCursor = $rows->first()->message_id ?? null;
 
@@ -281,35 +307,59 @@ class ChatController extends Controller
         $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
 
         $q = DB::table('threads as a')
-            ->leftJoin('messages as b', 'a.id', '=', 'b.thread_id')
-            ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
-            ->where('a.company_id', $companyId)
-            ->where('a.communication_channel_id', $channelId)
-            ->where('c.phone', $phone)
-            ->when($cursor, fn ($qq) => $qq->where('b.id', '<', $cursor))
-            ->orderByDesc('b.id')
-            ->limit($limit)
-            ->select([
-                'b.id as message_id',
-                'b.thread_id',
-                'b.item_type',
-                'b.item_content',
-                'b.create_date as message_create_date',
-                'b.origin as message_origin',
-                'b.external_id',
-                'c.name',
-                'c.phone',
-                DB::raw("
-                    case
-                        when coalesce(b.external_id, '') <> '' then 'USUARIO'
-                        else 'BOT'
-                    end as enviado_por
-                "),
-            ]);
+        ->leftJoin('messages as b', 'a.id', '=', 'b.thread_id')
+        ->leftJoin('customers as c', 'b.customer_id', '=', 'c.id')
+        ->leftJoin('message_templates as mt', function ($join) {
+            $join->on('mt.name', '=', DB::raw("
+                CASE
+                WHEN b.item_type = 'template'
+                THEN (b.item_content::jsonb)->>'templateName'
+                ELSE NULL
+                END
+            "))
+            ->on('mt.company_id', '=', 'a.company_id') 
+            ->on('mt.communication_channel_id', '=', 'a.communication_channel_id')
+            ->where('mt.status_talina', true);
+        })
+        ->where('a.company_id', $companyId)
+        ->where('a.communication_channel_id', $channelId)
+        ->where('c.phone', $phone)
+        ->when($cursor, fn ($qq) => $qq->where('b.id', '<', $cursor))
+        ->orderByDesc('b.id')
+        ->limit($limit)
+        ->select([
+            'b.id as message_id',
+            'b.thread_id',
+            'b.item_type',
+            'b.item_content',
+            'b.create_date as message_create_date',
+            'b.origin as message_origin',
+            'b.external_id',
+            'c.name',
+            'c.phone',
+            'mt.components as template_components',
+            DB::raw("
+                case
+                    when b.item_type = 'template' then mt.components
+                    else to_jsonb(b.item_content)
+                end as final_content
+            "),
+            DB::raw("
+                case
+                    when coalesce(b.external_id, '') <> '' then 'USUARIO'
+                    else 'BOT'
+                end as enviado_por
+            "),
+        ]);
 
         $rows = $q->get();
 
-        // cursor = el último message_id del lote (como viene DESC, es el más viejo de este page)
+        $rows->transform(function ($r) {
+            $r->template_components = $r->template_components ? json_decode($r->template_components, true) : null;
+            $r->final_content = $r->final_content ? json_decode($r->final_content, true) : null;
+            return $r;
+        });
+
         $nextCursor = $rows->last()->message_id ?? null;
 
         return response()->json([
