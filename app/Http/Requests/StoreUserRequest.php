@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreUserRequest extends FormRequest
 {
@@ -27,10 +28,12 @@ class StoreUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', 'unique:users_laravel,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'exists:roles,name'],
+
             'channels' => ['nullable', 'array'],
             'channels.*' => [
                 'integer',
-                Rule::exists('communication_channels', 'id')->where('status', 'ACTIVO'),
+                Rule::exists('communication_channels', 'id')
+                    ->where(fn ($q) => $q->where('status', 'ACTIVO')),
             ],
         ];
     }

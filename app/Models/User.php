@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Models\CommunicationChannel;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
@@ -58,5 +59,15 @@ class User extends Authenticatable
                 });
             });
         });
+    }
+
+    public function communicationChannels()
+    {
+        return $this->belongsToMany(
+            CommunicationChannel::class,
+            'user_communication_channels',     // tabla pivot
+            'user_id',                         // FK en pivot hacia users_laravel
+            'communication_channel_id'          // FK en pivot hacia communication_channels
+        )->withPivot(['company_id'])->withTimestamps();
     }
 }

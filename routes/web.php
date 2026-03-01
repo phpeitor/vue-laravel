@@ -53,7 +53,7 @@ Route::middleware('auth')->group(function () {
 Route::get(
     '/campaigns/companies/{company}/channels',
     [CampaignController::class, 'channels']
-)->middleware(['auth', 'permission:campaigns']);
+)->middleware(['auth', 'permission:campaigns|chat']);
 
 Route::get(
     '/campaigns/companies/{company}/channels/{channel}/templates',
@@ -76,6 +76,7 @@ Route::middleware(['auth', 'permission:chat'])->group(function () {
     Route::get('/chat/messages/{threadId}', [ChatController::class, 'messages'])->name('chat.messages'); 
 });
 
+Route::get('/chat/tipificaciones', [ChatController::class, 'tipificaciones']);
 Route::middleware(['auth'])->patch('/chat/threads/{thread}/close', [ChatController::class, 'closeThread']);
 
 Route::middleware(['auth'])->group(function () {
