@@ -172,7 +172,7 @@ const deleteUser = (id) => {
                         <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Password</th>
                         <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Estado</th>
                         <th class="px-3 py-3.5 text-left text-sm font-semibold text-foreground">Creado</th>
-                        <th class="relative py-3.5 pl-3 pr-4 sm:pr-6" />
+                        <th class="relative py-3.5 pl-3 pr-4 sm:pr-6"> Acciones </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border bg-card">

@@ -73,12 +73,7 @@ class UserController extends Controller
                 a.id,
                 a.company_id,
                 b.company_name,
-                UPPER(
-                    case
-                        when a.channel_name like '519%' then b.company_name || ' - ' || a.channel_name
-                        else a.channel_name
-                    end
-                ) as channel_name
+                channel_name
             ")
             ->get();
 
@@ -116,16 +111,39 @@ class UserController extends Controller
     public function edit(User $user)
     {
         $roles = Role::pluck('name');
+
+        $channels = DB::table('communication_channels as a')
+            ->leftJoin('companies as b', 'a.company_id', '=', 'b.id')
+            ->where('a.status', 'ACTIVO')
+            ->orderBy('b.company_name', 'asc')
+            ->selectRaw("
+                a.id,
+                a.company_id,
+                b.company_name,
+                a.channel_name
+            ")
+            ->get();
+
+        // ids ya asignados al usuario (pivot user_communication_channels)
+        $selectedChannels = DB::table('user_communication_channels')
+            ->where('user_id', $user->id)
+            ->pluck('communication_channel_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
         return inertia('User/Edit', [
             'user' => UserResource::make($user),
             'roles' => $roles,
             'currentRole' => $user->getRoleNames()->first(),
+            'channels' => $channels,
+            'selectedChannels' => $selectedChannels,
         ]);
     }
 
     public function update(UpdateUserRequest $request, User $user)
     {
         $validated = $request->validated();
+
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->estado = $validated['estado'];
@@ -136,8 +154,22 @@ class UserController extends Controller
 
         $user->save();
         $user->syncRoles([$validated['role']]);
+
+        // ✅ sync canales (si viene vacío, limpia todos)
+        $selectedIds = $request->input('channels', []);
+
+        $rows = CommunicationChannel::query()
+            ->whereIn('id', $selectedIds)
+            ->get(['id', 'company_id']);
+
+        $syncData = $rows->mapWithKeys(fn ($ch) => [
+            $ch->id => ['company_id' => $ch->company_id],
+        ])->toArray();
+
+        $user->communicationChannels()->sync($syncData);
+
         return redirect()->route('users.index')
-        ->with('success', $user->name . ' actualizado correctamente');
+            ->with('success', $user->name . ' actualizado correctamente');
     }
 
     public function destroy(User $user)

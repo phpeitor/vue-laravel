@@ -13,15 +13,74 @@ use Illuminate\Support\Facades\Storage;
 class ChatController extends Controller
 {
     
-    public function index()
+    public function index(Request $request)
     {
         $this->authorize('viewAny', Thread::class);
 
+        $userId = $request->user()->id;
+
+        $assignments = DB::table('user_communication_channels')
+            ->where('user_id', $userId)
+            ->get(['company_id', 'communication_channel_id']);
+
+        $hasAssignments = $assignments->isNotEmpty();
+
+        $companiesQuery = Company::select('id', 'company_name')->orderBy('company_name');
+
+        if ($hasAssignments) {
+            $companyIds = $assignments->pluck('company_id')->unique()->values();
+            $companiesQuery->whereIn('id', $companyIds);
+        }
+
+        $companies = $companiesQuery->get();
+
+        // Mapa: company_id => [channel_ids...]
+        $allowedChannelsByCompany = $hasAssignments
+            ? $assignments
+                ->groupBy('company_id')
+                ->map(fn ($rows) => $rows->pluck('communication_channel_id')->unique()->values())
+                ->toArray()
+            : null;
+
+        // Default: primer par permitido (si tiene asignaciones)
+        $defaultCompanyId = null;
+        $defaultChannelId = null;
+
+        if ($hasAssignments) {
+            $first = $assignments->first();
+            $defaultCompanyId = (int) $first->company_id;
+            $defaultChannelId = (int) $first->communication_channel_id;
+        }
+
+        $hasAssignments = $assignments->isNotEmpty();
+
         return Inertia::render('Chat/Index', [
-            'companies' => Company::select('id', 'company_name')
-                ->orderBy('company_name')
-                ->get(),
+            'companies' => $companies,
+            'allowed_channels_by_company' => $allowedChannelsByCompany,
+            'default_company_id' => $defaultCompanyId,
+            'default_channel_id' => $defaultChannelId,
+            'has_channel_assignments' => $hasAssignments,
         ]);
+    }
+
+    private function assertCompanyChannelAccess(Request $request, int $companyId, int $channelId): void
+    {
+        $userId = $request->user()->id;
+
+        $hasAssignments = DB::table('user_communication_channels')
+            ->where('user_id', $userId)
+            ->exists();
+
+        // Si no tiene asignaciones -> NO restringir
+        if (!$hasAssignments) return;
+
+        $allowed = DB::table('user_communication_channels')
+            ->where('user_id', $userId)
+            ->where('company_id', $companyId)
+            ->where('communication_channel_id', $channelId)
+            ->exists();
+
+        abort_unless($allowed, 403, 'No autorizado para esa compañía/canal.');
     }
 
     public function threads(Request $request)
@@ -43,6 +102,7 @@ class ChatController extends Controller
 
         $companyId = (int) $data['company_id'];
         $channelId = (int) $data['communication_channel_id'];
+        $this->assertCompanyChannelAccess($request, $companyId, $channelId);
         $dateStart = isset($data['date_start']) ? Carbon::parse($data['date_start'])->startOfDay() : null;
         $dateEnd   = isset($data['date_end']) ? Carbon::parse($data['date_end'])->endOfDay() : null;
         $q         = trim($data['q'] ?? '');
@@ -279,13 +339,81 @@ class ChatController extends Controller
     {
         $this->authorize('close', $thread);
 
-        $thread->update(['thread_status' => 'CLOSED']);
+        // ya cerrado => no hacer nada (opcional)
+        if (strtoupper($thread->thread_status) === 'CLOSED') {
+            return response()->json([
+                'message' => 'El thread ya está cerrado.',
+                'thread_id' => $thread->id,
+                'thread_status' => $thread->thread_status,
+            ]);
+        }
+
+        $data = $request->validate([
+            'tipificacion_id' => ['required', 'integer'],
+        ]);
+
+        $tipId = (int) $data['tipificacion_id'];
+
+        // validar que la tipificación pertenezca al mismo company/canal del thread
+        $ok = DB::table('chat_tipificaciones')
+            ->where('id', $tipId)
+            ->where('company_id', $thread->company_id)
+            ->where('communication_channel_id', $thread->communication_channel_id)
+            ->where('is_active', true)
+            ->exists();
+
+        if (!$ok) {
+            return response()->json([
+                'message' => 'Tipificación inválida para este thread.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($request, $thread, $tipId) {
+            // inserta registro de cierre (1 por thread)
+            DB::table('thread_tipificaciones')->updateOrInsert(
+                ['thread_id' => $thread->id],
+                [
+                    'tipificacion_id' => $tipId,
+                    'user_id' => $request->user()->id,
+                    'fecha_registro' => now(),
+                ]
+            );
+
+            // cierra thread
+            $thread->update(['thread_status' => 'CLOSED']);
+        });
 
         return response()->json([
             'message' => 'Conversación cerrada exitosamente',
             'thread_id' => $thread->id,
-            'thread_status' => $thread->thread_status,
+            'thread_status' => 'CLOSED',
         ]);
+    }
+
+    public function tipificaciones(Request $request)
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        $data = $request->validate([
+            'company_id' => ['required', 'integer'],
+            'communication_channel_id' => ['required', 'integer'],
+        ]);
+
+        $rows = DB::table('chat_tipificaciones')
+            ->where('company_id', (int)$data['company_id'])
+            ->where('communication_channel_id', (int)$data['communication_channel_id'])
+            ->where('is_active', true)
+            ->orderBy('tipificacion_1')
+            ->orderBy('tipificacion_2')
+            ->orderBy('tipificacion_3')
+            ->get([
+                'id',
+                'tipificacion_1',
+                'tipificacion_2',
+                'tipificacion_3',
+            ]);
+
+        return response()->json(['data' => $rows]);
     }
 
     public function historyByPhone(Request $request)
@@ -302,6 +430,7 @@ class ChatController extends Controller
 
         $companyId = (int) $data['company_id'];
         $channelId = (int) $data['communication_channel_id'];
+        $this->assertCompanyChannelAccess($request, $companyId, $channelId);
         $phone     = trim($data['phone']);
         $limit     = (int) ($data['limit'] ?? 100);
         $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
