@@ -85,7 +85,7 @@ type Paginator<T> = {
 type PageProps = {
   campaigns: Paginator<Campaign>
   campaign_logs: CampaignLog[]
-  campaign_recipients: CampaignRecipient[]
+  campaign_recipients: Paginator<CampaignRecipient>
   selectedCampaignId: number | null
   config: {
     hsmBaseUrl: string
@@ -163,7 +163,11 @@ const campaigns = computed(() => campaignsPaginator.value.data)
 const campaignsLinks = computed(() => campaignsPaginator.value.links)
 
 const logsAll = computed(() => (page.props.campaign_logs ?? []) as CampaignLog[])
-const recipientsAll = computed(() => (page.props.campaign_recipients ?? []) as CampaignRecipient[])
+
+const recipientsPaginator = computed(() => page.props.campaign_recipients)
+const recipientsAll = computed(() => recipientsPaginator.value.data ?? [])
+const recipientsLinks = computed(() => recipientsPaginator.value.links ?? [])
+
 const initialSelected = (page.props.selectedCampaignId ?? null) as number | null
 const selectedCampaignId = ref<number | null>(initialSelected ?? (campaigns.value[0]?.id ?? null))
 
@@ -273,6 +277,7 @@ const currentPage = computed(() => {
   return p ? Number(p) : campaignsPaginator.value.current_page ?? 1
 })
 
+
 const activeTab = ref<'campaigns' | 'campaign_logs' | 'campaign_recipients'>('campaigns')
 
 const goToRecipientsTab = (campaignId: number) => {
@@ -291,6 +296,17 @@ const openCampaign = (id: number) => {
 }
 
 const goToCampaignPage = (url: string | null) => {
+  if (!url) return
+
+  const u = new URL(url, window.location.origin)
+  if (selectedCampaignId.value && !u.searchParams.get('campaign_id')) {
+    u.searchParams.set('campaign_id', String(selectedCampaignId.value))
+  }
+
+  router.get(u.pathname + u.search, {}, { preserveState: true, preserveScroll: true, replace: true })
+}
+
+const goToRecipientsPage = (url: string | null) => {
   if (!url) return
 
   const u = new URL(url, window.location.origin)
@@ -600,44 +616,86 @@ const goToCampaignPage = (url: string | null) => {
               No hay recipients para esta campaña.
             </div>
 
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full">
-              <Card v-for="r in selectedRecipients" :key="r.id" class="w-full">
-                <CardHeader>
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle class="text-base">#{{ r.id }} — {{ r.phone }}</CardTitle>
+            <div v-else class="w-full flex flex-col gap-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full">
+                <Card v-for="r in selectedRecipients" :key="r.id" class="w-full">
+                  <CardHeader>
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle class="text-base">#{{ r.id }} — {{ r.phone }}</CardTitle>
+                      </div>
+
+                      <Badge :variant="statusVariant(r.status)" class="border" :class="badgeClass(r.status)">
+                        {{ r.status }}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent class="space-y-2">
+                    <div class="text-xs text-muted-foreground">
+                      {{ formatDateTime(r.created_at) }} → {{ formatDateTime(r.updated_at) }}
                     </div>
 
-                    <Badge :variant="statusVariant(r.status)" class="border" :class="badgeClass(r.status)">
-                      {{ r.status }}
-                    </Badge>
-                  </div>
-                </CardHeader>
+                    <div v-if="r.provider_message_id" class="text-sm">
+                      <span class="text-muted-foreground">Status:</span>
+                      <button
+                        v-if="r.provider_message_id"
+                        type="button"
+                        class="ml-1 font-mono underline underline-offset-4 hover:text-primary transition"
+                        @click.stop="openHsmStatus(r.provider_message_id)"
+                      >
+                        {{ r.provider_message_id }}
+                      </button>
+                    </div>
 
-                <CardContent class="space-y-2">
-                  <div class="text-xs text-muted-foreground">
-                    {{ formatDateTime(r.created_at) }} → {{ formatDateTime(r.updated_at) }}
-                  </div>
+                    <div v-if="r.error_message" class="text-sm text-destructive">
+                      {{ r.error_message }}
+                    </div>
 
-                  <div v-if="r.provider_message_id" class="text-sm">
-                    <span class="text-muted-foreground">Status:</span>
-                    <button
-                      v-if="r.provider_message_id"
-                      type="button"
-                      class="ml-1 font-mono underline underline-offset-4 hover:text-primary transition"
-                      @click.stop="openHsmStatus(r.provider_message_id)"
-                    >
-                      {{ r.provider_message_id }}
-                    </button>
-                  </div>
+                    <pre class="text-xs bg-muted rounded-md p-3 overflow-auto">{{ parseMaybeJson(r.variables) ? JSON.stringify(parseMaybeJson(r.variables), null, 2) : '' }}</pre>
+                  </CardContent>
+                </Card>
+              </div>
 
-                  <div v-if="r.error_message" class="text-sm text-destructive">
-                    {{ r.error_message }}
-                  </div>
+              <!-- Paginación de Recipients -->
+              <div v-if="recipientsPaginator.last_page > 1" class="mt-4 flex items-center justify-between gap-3">
+                <p class="text-xs text-muted-foreground">
+                  Mostrando {{ recipientsPaginator.from ?? 0 }}–{{ recipientsPaginator.to ?? 0 }}
+                  de {{ recipientsPaginator.total ?? 0 }}
+                </p>
 
-                  <pre class="text-xs bg-muted rounded-md p-3 overflow-auto">{{ parseMaybeJson(r.variables) ? JSON.stringify(parseMaybeJson(r.variables), null, 2) : '' }}</pre>
-                </CardContent>
-              </Card>
+                <div class="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="!recipientsLinks[0]?.url"
+                    @click="goToRecipientsPage(recipientsLinks[0]?.url)"
+                  >
+                    «
+                  </Button>
+
+                  <Button
+                    v-for="(l, i) in recipientsLinks"
+                    :key="i"
+                    variant="outline"
+                    size="sm"
+                    class="min-w-9"
+                    :class="l.active ? 'bg-muted' : ''"
+                    :disabled="!l.url || l.label.includes('Previous') || l.label.includes('Next')"
+                    @click="goToRecipientsPage(l.url)"
+                    v-html="l.label"
+                  />
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="!recipientsLinks[recipientsLinks.length - 1]?.url"
+                    @click="goToRecipientsPage(recipientsLinks[recipientsLinks.length - 1]?.url)"
+                  >
+                    »
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </TabsContent>
