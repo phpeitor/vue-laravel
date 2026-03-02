@@ -36,8 +36,10 @@ class CampaignController extends Controller
         $this->authorize('viewAny', Campaign::class);
 
         $selectedCampaignId = $request->integer('campaign_id');
+        $recipientsPage = $request->integer('recipients_page', 1);
 
         $perPage = 6;
+        $recipientsPerPage = 15;
 
         $campaigns = Campaign::query()
             ->withCount([
@@ -57,7 +59,7 @@ class CampaignController extends Controller
 
         $campaigns->appends(['campaign_id' => $selectedCampaignId]);
         $logs = collect();
-        $recipients = collect();
+        $recipients = new \Illuminate\Pagination\Paginator(collect(), $recipientsPerPage, $recipientsPage);
 
         if ($selectedCampaignId) {
             $logs = CampaignLog::query()
@@ -85,7 +87,8 @@ class CampaignController extends Controller
             $recipients = CampaignRecipient::query()
                 ->where('campaign_id', $selectedCampaignId)
                 ->orderByDesc('id')
-                ->get();
+                ->paginate($recipientsPerPage, ['*'], 'recipients_page', $recipientsPage)
+                ->appends(['campaign_id' => $selectedCampaignId]);
         }
 
         return Inertia::render('Campaign/Index', [

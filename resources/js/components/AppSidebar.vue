@@ -29,10 +29,13 @@ const mainNavItems = allNavItems.filter(item => {
   if (item.title === 'Plantillas') {
     return hasPermission('templates'); 
   }
+  if (item.title === 'Campañas') {
+    return hasPermission('campaigns'); 
+  }
   return true;
 })
 
-/*
+
 const footerNavItems: NavItem[] = [
     {
         title: 'Github Repo',
@@ -44,7 +47,7 @@ const footerNavItems: NavItem[] = [
         href: 'https://laravel.com/docs/starter-kits',
         icon: BookOpen,
     },
-];*/
+];
 </script>
 
 <template>
@@ -67,7 +70,7 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <!--<NavFooter :items="footerNavItems" />-->
+            <NavFooter :items="footerNavItems" />
             <NavUser />
         </SidebarFooter>
     </Sidebar>

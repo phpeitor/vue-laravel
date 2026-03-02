@@ -1,11 +1,23 @@
-<script setup>
+<script setup lang="ts">
 import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
 import Pagination from "@/components/Pagination.vue";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/vue3";
 import { onMounted, ref, watch, computed } from "vue";
 import useAuth from "@/composables/useAuth";
-import { SquarePlus } from 'lucide-vue-next'
+import { SquarePlus, Edit, Trash2 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/toast'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 
 const breadcrumbs = [
   {
@@ -15,45 +27,42 @@ const breadcrumbs = [
 ];
 
 const { hasPermission } = useAuth();
-const props = defineProps({
+const props = defineProps<{ users: { data: any[] } }>()
 
-    users: {
-        type: Object,
-    }
+const page = usePage() as any
 
-});
-
-const flashMessage = ref('');
+const { toast } = useToast()
 
 onMounted(() => {
-    flashMessage.value = usePage().props.flash?.success || '';
-
-    if (flashMessage.value) {
-        setTimeout(() => {
-            flashMessage.value = '';
-        }, 3000); 
-    }
-    //console.log("Usuarios:", props.users.data);
+  const msg = page.props.flash?.success
+  if (msg) {
+    toast({ title: msg, variant: 'success' })
+  }
 });
 
-const pageNumber = ref(1),
-    searchTerm = ref(usePage().props.search ?? "");
+const pageNumber = ref<number>(1)
+const searchTerm = ref<string>(page.props.search ?? "")
 const sortDirection = ref('asc')
 
-const pageNumberUpdated = (link) => {
-    pageNumber.value = link.url.split("=")[1];
+type PaginationLink = { url?: string | null } | null
+
+const pageNumberUpdated = (link: PaginationLink) => {
+  const urlStr = typeof link === 'object' ? link?.url ?? '' : ''
+  const parts = urlStr.split("=")
+  const v = parts[1] ?? '1'
+  pageNumber.value = Number(v) || 1
 };
 
 const usersUrl = computed(() => {
     const url = new URL(route("users.index"));
-    url.searchParams.set("page", pageNumber.value);
+    url.searchParams.set("page", String(pageNumber.value));
 
     if (searchTerm.value) {
-        url.searchParams.set("search", searchTerm.value);
+      url.searchParams.set("search", String(searchTerm.value));
     }
 
     url.searchParams.set("sort", "id");
-    url.searchParams.set("direction", sortDirection.value);
+    url.searchParams.set("direction", String(sortDirection.value));
     return url;
 });
 
@@ -83,26 +92,28 @@ watch(
 );
 
 const deleteForm = useForm({});
-const deleteUser = (id) => {
-    if (confirm("¿Desea eliminar este usuario?")) {
-        deleteForm.delete(route("users.destroy", id), {
-            preserveScroll: true,
-        });
-    }
-};
-</script>
+const deleteDialogOpen = ref(false)
+const deletingUserId = ref<number | null>(null)
 
-<style scoped>
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.5s ease;
+const openDeleteDialog = (id: number) => {
+  deletingUserId.value = id
+  deleteDialogOpen.value = true
 }
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
+
+const confirmDelete = async () => {
+  const id = deletingUserId.value
+  if (!id) return
+  try {
+    await deleteForm.delete(route('users.destroy', id), { preserveScroll: true })
+    toast({ title: 'Usuario eliminado', variant: 'success' })
+  } catch (e) {
+    toast({ title: 'Error al eliminar', description: String(e || 'Error'), variant: 'destructive' })
+  } finally {
+    deleteDialogOpen.value = false
+    deletingUserId.value = null
+  }
 }
-.fade-enter-to, .fade-leave-from {
-  opacity: 1;
-}
-</style>
+</script>
 
 <template>
   <Head title="Users" />
@@ -141,16 +152,7 @@ const deleteUser = (id) => {
             </div>
           </div>
 
-          <transition name="fade">
-            <div
-              v-if="flashMessage"
-              class="mt-4 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 text-sm p-2 rounded-md transition"
-            >
-              <span class="mr-2">🙎‍♂️</span>
-              <span>{{ flashMessage }}</span>
-              <button @click="flashMessage = ''" class="ml-2 text-green-600 hover:text-green-800">ㄨ</button>
-            </div>
-          </transition>
+          <!-- Toaster shows server flash messages as toasts on mount -->
 
           <div class="mt-8 flex flex-col w-full">
             <div class="rounded-md border shadow overflow-hidden">
@@ -199,21 +201,22 @@ const deleteUser = (id) => {
                           {{ user.created_at_formatted }}
                         </td>
                         <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                          <Link
-                            v-if="hasPermission('edit user')"
-                            :href="route('users.edit', user.id)"
-                            class="text-indigo-600 hover:text-indigo-900"
-                          >
-                            Edit
-                          </Link>
+                          <div class="flex items-center justify-end gap-2">
+                            <Button v-if="hasPermission('edit user')" variant="ghost" size="sm" as-child>
+                              <Link :href="route('users.edit', user.id)" class="p-2">
+                                <Edit class="w-4 h-4 text-muted-foreground" />
+                              </Link>
+                            </Button>
 
-                          <button
-                            v-if="user.estado == 1 && hasPermission('delete user')"
-                            @click="deleteUser(user.id)"
-                            class="ml-2 text-indigo-600 hover:text-indigo-900"
-                          >
-                            Delete
-                          </button>
+                            <Button
+                              v-if="user.estado == 1 && hasPermission('delete user')"
+                              variant="ghost"
+                              size="sm"
+                              @click="openDeleteDialog(user.id)"
+                            >
+                              <Trash2 class="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     </tbody>
@@ -221,6 +224,28 @@ const deleteUser = (id) => {
                 </div>
               <Pagination :data="users" :pageNumberUpdated="pageNumberUpdated" />
             </div>
+
+            <!-- Delete confirmation dialog -->
+            <AlertDialog v-model:open="deleteDialogOpen">
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Eliminar usuario</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción es irreversible. ¿Desea eliminar el usuario seleccionado?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <AlertDialogFooter>
+                  <AlertDialogCancel as-child>
+                    <button class="inline-flex items-center px-3 py-2 rounded-md border">Cancelar</button>
+                  </AlertDialogCancel>
+
+                  <AlertDialogAction as-child>
+                    <button @click="confirmDelete" class="inline-flex items-center px-3 py-2 rounded-md bg-destructive text-white">Eliminar</button>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>
