@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -27,6 +28,12 @@ class UpdateUserRequest extends FormRequest
             'password' => ['nullable', 'string', 'min:8'],
             'estado' => ['required', 'boolean'], 
             'role' => 'required|string|exists:roles,name',
+            'channels' => ['nullable', 'array'],
+            'channels.*' => [
+                'integer',
+                Rule::exists('communication_channels', 'id')
+                    ->where(fn ($q) => $q->where('status', 'ACTIVO')),
+            ],
         ];
     }
 

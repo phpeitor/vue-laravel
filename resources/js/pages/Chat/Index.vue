@@ -2,7 +2,6 @@
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, usePage } from '@inertiajs/vue3'
 import { computed, watch, nextTick, onBeforeUnmount, ref, type Ref } from 'vue'
-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,13 +42,23 @@ const breadcrumbs = [
   },
 ]
 
+import RichDraftInput from '@/components/RichDraftInput.vue'
 import { useTextFormat } from '@/composables/useTextFormat'
 const { displayThreadName, formatPE } = useTextFormat()
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
-const { formatWhatsappText } = useWhatsappFormatter()
+const { formatWhatsappText, htmlToWhatsappText } = useWhatsappFormatter()
 import { Label } from '@/components/ui/label'
 import { RangeCalendar } from '@/components/ui/range-calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@/components/ui/command'
+import { Check, ChevronsUpDown } from 'lucide-vue-next'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -61,7 +70,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2 } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -82,6 +91,8 @@ type MessageRow = {
   thread_id: number
   item_type: string
   item_content: string
+  final_content?: any            // ✅ nuevo
+  template_components?: any      // ✅ opcional
   message_create_date: string | null
   message_origin?: string | null
   external_id?: string | null
@@ -106,6 +117,11 @@ const filtersOpen = ref(false)
 const q = ref('')
 const tz = getLocalTimeZone()
 
+const hasChannelAssignments =
+  (page.props.has_channel_assignments ?? false) as boolean
+
+const canUseFilters = computed(() => hasChannelAssignments)
+
 const buildDefaultDates = () => {
   const end = new Date()
   const start = subDays(end, 15)
@@ -125,17 +141,18 @@ const dateRange = ref({
 const minDate = today(tz).subtract({ days: 365 })
 const maxDate = today(tz).add({ days: 365 })
 
-const defaultCompanyId = computed<number | ''>(() => {
-  const by1 = companies.find(c => Number(c.id) === 1)?.id
-  return (by1 ?? companies[0]?.id ?? '') as any
-})
+const allowedChannelsByCompany =
+  (page.props.allowed_channels_by_company ?? null) as Record<string, number[]> | null
+
+const serverDefaultCompanyId = (page.props.default_company_id ?? null) as number | null
+const serverDefaultChannelId = (page.props.default_channel_id ?? null) as number | null
 
 type ThreadStatusFilter = 'OPEN' | 'CLOSED' | 'ALL'
 type SearchBy = 'ALL' | 'PHONE' | 'SENDER_ID'
 
 const filters = ref({
-  company_id: defaultCompanyId.value as number | '',
-  communication_channel_id: 3 as number | '',
+  company_id: (serverDefaultCompanyId ?? '') as number | '',
+  communication_channel_id: (serverDefaultChannelId ?? '') as number | '',
   date_start: startStr,
   date_end: endStr,
   thread_status: 'OPEN' as ThreadStatusFilter,
@@ -156,6 +173,12 @@ const activeThread = computed<ThreadSummary | null>(() => {
   return threadsList.value.find(t => t.thread_id === activeThreadId.value) ?? null
 })
 
+const isThreadClosed = computed(() => {
+  return (activeThread.value?.thread_status ?? '').toUpperCase() === 'CLOSED'
+})
+
+const draftDisabled = computed(() => !activeThreadId.value || isThreadClosed.value)
+
 const messagesList = ref<MessageRow[]>([])
 const messagesNextCursor = ref<number | null>(null)
 const messagesHasMore = ref(true)
@@ -175,6 +198,181 @@ const refreshThreads = async () => {
     activeThreadId.value = keep
   } else if (threadsList.value.length) {
     activeThreadId.value = threadsList.value[0].thread_id
+  }
+}
+
+const extractTemplateText = (components: any): string => {
+  if (!Array.isArray(components)) return ''
+
+  const header = components.find((c: any) => c?.type === 'HEADER' && c?.text)?.text
+  const body = components.find((c: any) => c?.type === 'BODY' && c?.text)?.text
+
+  // botones (si algún template los guarda así)
+  let buttons = ''
+  const btnComp = components.find((c: any) => c?.type === 'BUTTONS' && Array.isArray(c?.buttons))
+  if (btnComp) {
+    const texts = (btnComp.buttons as any[])
+      .map((b) => b?.text)
+      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+
+    if (texts.length) buttons = `\n${texts.map((t: string) => `🔘 ${t}`).join('\n')}`
+  }
+
+  return [header, body].filter(Boolean).join('\n') + buttons
+}
+
+const getMessagePlainText = (m: MessageRow): string => {
+  if (m.item_type === 'template') {
+    const comps = m.final_content ?? m.template_components
+    const txt = extractTemplateText(comps)
+    // fallback si no encontró template en DB
+    return txt || (m.item_content ?? '')
+  }
+  return m.item_content ?? ''
+}
+
+import { useToast } from '@/components/ui/toast/use-toast'
+const { toast } = useToast()
+
+watch(canUseFilters, (ok) => {
+  if (!ok) filtersOpen.value = false
+}, { immediate: true })
+
+const onClickFilters = () => {
+  if (!canUseFilters.value) {
+    toast({
+      title: 'Asignar canales',
+      description: 'No tienes canales asignados. Pide que te asignen al menos un canal para usar filtros.',
+      variant: 'destructive', // o quítalo si no quieres rojo
+    })
+    return
+  }
+  filtersOpen.value = true
+}
+
+type TipRow = {
+  id: number
+  tipificacion_1: string
+  tipificacion_2: string
+  tipificacion_3: string
+}
+
+const closeOpen = ref(false)
+const closeLoading = ref(false)
+const closeThreadTargetId = ref<number | null>(null)
+
+const tipRows = ref<TipRow[]>([])
+
+const selT1 = ref<string>('')
+const selT2 = ref<string>('')
+const selT3Id = ref<number | null>(null)
+const selT3Label = ref<string>('')
+
+const canConfirmClose = computed(() => !!closeThreadTargetId.value && !!selT3Id.value)
+
+const resetCloseForm = () => {
+  selT1.value = ''
+  selT2.value = ''
+  selT3Id.value = null
+  selT3Label.value = ''
+  tipRows.value = []
+}
+
+const fetchTipificaciones = async () => {
+  if (!filters.value.company_id || !filters.value.communication_channel_id) return
+  closeLoading.value = true
+  try {
+    const res = await axios.get('/chat/tipificaciones', {
+      params: {
+        company_id: filters.value.company_id,
+        communication_channel_id: filters.value.communication_channel_id,
+      },
+    })
+    tipRows.value = (res.data?.data ?? []) as TipRow[]
+  } finally {
+    closeLoading.value = false
+  }
+}
+
+const openCloseModal = async (threadId: number) => {
+  // thread debe estar OPEN (ya tienes el v-if, pero por seguridad)
+  const t = threadsList.value.find(x => x.thread_id === threadId)
+  if (!t || String(t.thread_status).toUpperCase() !== 'OPEN') return
+
+  closeThreadTargetId.value = threadId
+  resetCloseForm()
+  closeOpen.value = true
+  await fetchTipificaciones()
+}
+
+const t1Options = computed(() => {
+  const set = new Set(tipRows.value.map(r => r.tipificacion_1).filter(Boolean))
+  return Array.from(set).sort()
+})
+
+const t2Options = computed(() => {
+  if (!selT1.value) return []
+  const set = new Set(
+    tipRows.value
+      .filter(r => r.tipificacion_1 === selT1.value)
+      .map(r => r.tipificacion_2)
+      .filter(Boolean)
+  )
+  return Array.from(set).sort()
+})
+
+const t3Options = computed(() => {
+  if (!selT1.value || !selT2.value) return []
+  return tipRows.value
+    .filter(r => r.tipificacion_1 === selT1.value && r.tipificacion_2 === selT2.value)
+    .map(r => ({ id: r.id, label: r.tipificacion_3 }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+})
+
+// resets en cascada
+watch(selT1, () => {
+  selT2.value = ''
+  selT3Id.value = null
+  selT3Label.value = ''
+})
+
+watch(selT2, () => {
+  selT3Id.value = null
+  selT3Label.value = ''
+})
+
+const confirmCloseThread = async () => {
+  if (!closeThreadTargetId.value) return
+
+  if (!selT3Id.value) {
+    toast({
+      title: 'Selecciona una tipificación',
+      description: 'Debes seleccionar Tipificación 1, 2 y 3 antes de cerrar.',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  closingThreadId.value = closeThreadTargetId.value
+  try {
+    await axios.patch(`/chat/threads/${closeThreadTargetId.value}/close`, {
+      tipificacion_id: selT3Id.value,
+    })
+
+    // Actualizar estado local
+    const idx = threadsList.value.findIndex(t => t.thread_id === closeThreadTargetId.value)
+    if (idx >= 0) threadsList.value[idx].thread_status = 'CLOSED'
+
+    closeOpen.value = false
+  } catch (e: any) {
+    toast({
+      title: 'No se pudo cerrar',
+      description: e?.response?.data?.message ?? 'Error cerrando conversación.',
+      variant: 'destructive',
+    })
+  } finally {
+    closingThreadId.value = null
+    closeThreadTargetId.value = null
   }
 }
 
@@ -251,7 +449,7 @@ const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
     const created = formatPE(m.message_create_date)
-    const raw = m.item_content ?? ''
+    const raw = getMessagePlainText(m)
     const formatted = raw ? formatWhatsappText(raw) : ''
 
     return {
@@ -342,7 +540,6 @@ const fetchMessages = async (threadId: number, opts?: { prepend?: boolean }) => 
   }
 }
 
-
 const phoneSearchOpen = ref(false)
 const phoneSearchDraft = ref('')
 const phoneSearchApplied = ref('')
@@ -424,21 +621,18 @@ const fetchThreads = async (opts?: { append?: boolean }) => {
 const resetFilters = async () => {
   const { startStr, endStr } = buildDefaultDates()
 
-  filters.value.company_id = defaultCompanyId.value as any
-  filters.value.communication_channel_id = 3
+  filters.value.company_id = (serverDefaultCompanyId ?? '') as any
+  filters.value.communication_channel_id = (serverDefaultChannelId ?? '') as any
+
   filters.value.date_start = startStr
   filters.value.date_end = endStr
 
-  dateRange.value = {
-    start: parseDate(startStr),
-    end: parseDate(endStr),
-  }
+  dateRange.value = { start: parseDate(startStr), end: parseDate(endStr) }
 
   filters.value.thread_status = 'OPEN'
   filters.value.q_by = 'ALL'
   q.value = ''
 }
-
 /* ---------------------------
    SOCKETS (Reverb/Echo)
    (Colocados AQUÍ para que ya existan filters/threads/messages)
@@ -536,16 +730,22 @@ watch(
 
     // cargar channels
     const { data } = await axios.get(`/campaigns/companies/${companyId}/channels`)
-    channels.value = data ?? []
+    let incoming = (data ?? []) as { id: number; channel_name: string }[]
+
+    // Si el usuario tiene asignaciones, filtrar canales permitidos para esa company
+    const allowed = allowedChannelsByCompany?.[String(companyId)]
+    if (Array.isArray(allowed) && allowed.length) {
+      incoming = incoming.filter(ch => allowed.includes(Number(ch.id)))
+    }
+
+    channels.value = incoming
 
     // mantener canal si existe
     const current = filters.value.communication_channel_id
     const existsCurrent = !!current && channels.value.some(ch => Number(ch.id) === Number(current))
     if (existsCurrent) return
 
-    // preferir canal 3, sino el primero
-    const prefer3 = channels.value.find(ch => Number(ch.id) === 3)
-    filters.value.communication_channel_id = (prefer3?.id ?? channels.value[0]?.id ?? '') as any
+    filters.value.communication_channel_id = (channels.value[0]?.id ?? '') as any
   },
   { immediate: true }
 )
@@ -600,71 +800,47 @@ onBeforeUnmount(() => {
 /* ---------------------------
    Send message
 ---------------------------- */
-const draft = ref('')
+const onEditorSubmit = async (html: string) => {
+  if (draftDisabled.value) return
+  // mandamos el texto convertido DIRECTO (sin depender del computed, evita race)
+  const msg = htmlToWhatsappText(html).trim()
+  if (!msg) return
+
+  // reutiliza tu lógica: te recomiendo extraer a sendMessageWithText(msg)
+  await sendMessageWithText(msg)
+}
+
+const draftText = computed(() => htmlToWhatsappText(draftHtml.value))
+const canSend = computed(() => !draftDisabled.value && draftText.value.trim().length > 0)
+
+const draftHtml = ref('')
+const draftEditorRef = ref<any>(null)
 const closingThreadId = ref<number | null>(null)
 const showEmojiPickerChat = ref(false)
-const draftInputRef = ref<any>(null)
 
 const toggleEmojiPickerChat = () => {
+  if (draftDisabled.value) return
   showEmojiPickerChat.value = !showEmojiPickerChat.value
 }
 
-const getDraftEl = (): HTMLInputElement | null => {
-  const r = draftInputRef.value
-  if (!r) return null
-
-  // Caso 1: el componente expone inputRef
-  if (r.inputRef instanceof HTMLInputElement) return r.inputRef
-
-  // Caso 2: buscar el input real dentro del componente
-  const el = r.$el as HTMLElement | undefined
-  return el?.querySelector('input') ?? null
+const applyDraftFormat = (kind: 'bold' | 'italic' | 'underline') => {
+  if (draftDisabled.value) return
+  if (kind === 'bold') draftEditorRef.value?.toggleBold?.()
+  if (kind === 'italic') draftEditorRef.value?.toggleItalic?.()
+  if (kind === 'underline') draftEditorRef.value?.toggleUnderline?.()
 }
 
 const addEmojiToDraft = (emoji: any) => {
   const emojiChar = emoji?.i
   if (!emojiChar) return
-
-  const el = getDraftEl()
-  const current = draft.value ?? ''
-
-  const pos = el?.selectionStart ?? current.length
-  const start = current.slice(0, pos)
-  const end = current.slice(pos)
-
-  draft.value = `${start}${emojiChar}${end}`
-
-  nextTick(() => {
-    const input = getDraftEl()
-    if (!input) return
-    input.focus()
-    const nextPos = pos + emojiChar.length
-    input.selectionStart = input.selectionEnd = nextPos
-  })
-
+  draftEditorRef.value?.insertText?.(emojiChar)
   showEmojiPickerChat.value = false
 }
 
-const closeThread = async (threadId: number) => {
-  closingThreadId.value = threadId
-  try {
-    await axios.patch(`/chat/threads/${threadId}/close`)
-    // Actualizar estado local
-    const idx = threadsList.value.findIndex(t => t.thread_id === threadId)
-    if (idx >= 0) {
-      threadsList.value[idx].thread_status = 'CLOSED'
-    }
-  } catch (e) {
-    console.error('Error cerrando conversación:', e)
-  } finally {
-    closingThreadId.value = null
-  }
-}
-
-const sendMessage = async () => {
+const sendMessageWithText = async (msg: string) => {
   if (!activeThreadId.value) return
-  const msg = draft.value.trim()
-  if (!msg) return
+  if (isThreadClosed.value) return
+  if (!msg.trim()) return
 
   const threadId = activeThreadId.value
   const optimisticId = `tmp-${Date.now()}`
@@ -681,7 +857,8 @@ const sendMessage = async () => {
   } as any)
 
   nextTick(() => scrollToBottom())
-  draft.value = ''
+
+  draftHtml.value = '' // limpia editor
 
   try {
     await axios.post(`/api/chat/threads/${threadId}/reply`, {
@@ -689,11 +866,16 @@ const sendMessage = async () => {
       messageType: 'text',
       userId: 1,
     },{
-        headers: socketId ? { 'X-Socket-Id': socketId } : {}
+      headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
   } catch (e) {
     console.error(e)
   }
+}
+
+const sendMessage = async () => {
+  const msg = draftText.value.trim()
+  await sendMessageWithText(msg)
 }
 </script>
 
@@ -719,14 +901,18 @@ const sendMessage = async () => {
                   <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
                   <RefreshCw v-else class="h-4 w-4" />
                 </Button>
-  
-                <Dialog v-model:open="filtersOpen">
-                  <DialogTrigger as-child>
-                    <Button variant="outline" size="icon" title="Filtrar conversaciones">
-                      <Filter class="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
 
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Filtrar conversaciones"
+                  :class="!canUseFilters ? 'opacity-90 cursor-not-allowed' : ''"
+                  @click="onClickFilters"
+                >
+                  <Filter class="h-4 w-4" />
+                </Button>
+
+                <Dialog v-model:open="filtersOpen">
                   <DialogContent class="sm:max-w-[520px]">
                     <DialogHeader>
                       <DialogTitle>Filtrar conversaciones</DialogTitle>
@@ -907,7 +1093,7 @@ const sendMessage = async () => {
                                     size="icon"
                                     class="h-6 w-6"
                                     :disabled="closingThreadId === t.thread_id"
-                                    @click.stop="closeThread(t.thread_id)"
+                                    @click.stop="openCloseModal(t.thread_id)"
                                   >
                                     <X class="h-4 w-4" />
                                   </Button>
@@ -1043,37 +1229,90 @@ const sendMessage = async () => {
           <div class="p-3">
             <form class="flex items-center gap-2" @submit.prevent="sendMessage">
               <div class="relative flex-1">
-                <Input
-                  ref="draftInputRef"
-                  v-model="draft"
-                  placeholder="Escribe un mensaje…"
-                  class="h-11 pr-10"
+                <RichDraftInput
+                  ref="draftEditorRef"
+                  v-model="draftHtml"
+                  :disabled="draftDisabled"
+                  :placeholder="draftDisabled && activeThreadId ? 'Conversación cerrada' : 'Escribe un mensaje…'"
+                  class="pr-36"
+                  @submit="onEditorSubmit" 
                 />
 
-                <TooltipProvider :delayDuration="200">
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <button
-                        type="button"
-                        @click="toggleEmojiPickerChat"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 bg-muted rounded-full p-1 hover:bg-muted/70"
-                        aria-label="Insertar emoji"
-                      >
-                        😊
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" align="end" :sideOffset="6">
-                      Insertar emoji
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <TooltipProvider :delayDuration="200">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('bold')"
+                        >
+                          <Bold class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Negrita</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('italic')"
+                        >
+                          <Italic class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Cursiva</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="applyDraftFormat('underline')"
+                        >
+                          <Underline class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Subrayado</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <button
+                          type="button"
+                          :disabled="draftDisabled"
+                          @click="toggleEmojiPickerChat"
+                          class="h-8 w-8 flex items-center justify-center bg-muted rounded-full hover:bg-muted/70 disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label="Insertar emoji"
+                        >
+                          😊
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="end" :sideOffset="6">
+                        Insertar emoji
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
 
                 <div v-if="showEmojiPickerChat" class="absolute bottom-12 right-0 z-50">
                   <EmojiPicker @select="addEmojiToDraft" :native="true" />
                 </div>
               </div>
 
-              <Button type="submit" class="h-11" :disabled="!activeThreadId">
+              <Button type="submit" class="h-11" :disabled="!canSend">
                 <Send class="mr-2 h-4 w-4" />
                 Enviar
               </Button>
@@ -1082,6 +1321,120 @@ const sendMessage = async () => {
         </Card>
       </div>
     </div>
+
+    <Dialog v-model:open="closeOpen">
+      <DialogContent class="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Cerrar conversación</DialogTitle>
+          <DialogDescription>
+            Selecciona una tipificación (1 → 2 → 3). No podrás cerrar sin tipificación.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div v-if="closeLoading" class="text-sm text-muted-foreground py-4">
+          Cargando tipificaciones...
+        </div>
+
+        <div v-else class="grid gap-4 py-2">
+          <!-- Tipificación 1 -->
+          <div class="grid gap-2">
+            <Label>Tipificación 1</Label>
+            <Popover>
+              <PopoverTrigger as-child>
+                <Button variant="outline" role="combobox" class="w-full justify-between">
+                  <span class="truncate">{{ selT1 || 'Seleccionar...' }}</span>
+                  <ChevronsUpDown class="ml-2 h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent class="w-[520px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar..." />
+                  <CommandEmpty>Sin resultados</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      v-for="opt in t1Options"
+                      :key="opt"
+                      :value="opt"
+                      @select="() => (selT1 = opt)"
+                    >
+                      <Check :class="cn('mr-2 h-4 w-4', selT1 === opt ? 'opacity-100' : 'opacity-0')" />
+                      {{ opt }}
+                    </CommandItem>
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <!-- Tipificación 2 -->
+          <div class="grid gap-2">
+            <Label>Tipificación 2</Label>
+            <Popover>
+              <PopoverTrigger as-child>
+                <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1">
+                  <span class="truncate">{{ selT2 || 'Seleccionar...' }}</span>
+                  <ChevronsUpDown class="ml-2 h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent class="w-[520px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar..." />
+                  <CommandEmpty>Sin resultados</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      v-for="opt in t2Options"
+                      :key="opt"
+                      :value="opt"
+                      @select="() => (selT2 = opt)"
+                    >
+                      <Check :class="cn('mr-2 h-4 w-4', selT2 === opt ? 'opacity-100' : 'opacity-0')" />
+                      {{ opt }}
+                    </CommandItem>
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <!-- Tipificación 3 (esta ya amarra a id) -->
+          <div class="grid gap-2">
+            <Label>Tipificación 3</Label>
+            <Popover>
+              <PopoverTrigger as-child>
+                <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1 || !selT2">
+                  <span class="truncate">{{ selT3Label || 'Seleccionar...' }}</span>
+                  <ChevronsUpDown class="ml-2 h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent class="w-[520px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar..." />
+                  <CommandEmpty>Sin resultados</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      v-for="opt in t3Options"
+                      :key="opt.id"
+                      :value="opt.label"
+                      @select="() => { selT3Id = opt.id; selT3Label = opt.label }"
+                    >
+                      <Check :class="cn('mr-2 h-4 w-4', selT3Id === opt.id ? 'opacity-100' : 'opacity-0')" />
+                      {{ opt.label }}
+                    </CommandItem>
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="outline" @click="closeOpen = false">Cancelar</Button>
+          <Button type="button" :disabled="!canConfirmClose || closingThreadId === closeThreadTargetId" @click="confirmCloseThread">
+            Cerrar conversación
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Sheet v-model:open="historyOpen">
       <SheetContent side="right" class="w-full sm:max-w-[520px]">
@@ -1149,7 +1502,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
-                    v-html="formatWhatsappText(m.item_content ?? '')"
+                    v-html="formatWhatsappText(getMessagePlainText(m) ?? '')"
                   ></div>
                 </div>
               </div>
