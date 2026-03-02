@@ -51,9 +51,15 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@/components/ui/collapsible'
+
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-vue-next'
 
 const breadcrumbs = [
   {
@@ -176,6 +182,7 @@ const columns = [
 
       const children = [];
 
+
       // HEADER
       const header = typeMap.HEADER;
       if (header) {
@@ -256,9 +263,26 @@ const columns = [
         );
       }
 
-      return h('div', {
-        class: 'p-3 rounded-xl border shadow-sm bg-muted text-left',
-      }, children);
+      // Render: compact trigger with chevron + collapsible content limited in height
+      return h('div', { class: 'p-3 rounded-xl border shadow-sm bg-muted text-left' }, [
+        h('div', { class: 'flex flex-col' }, [
+          h('div', { class: 'flex items-center justify-between gap-2' }, [
+            h(Collapsible, {}, () => [
+              h('div', { class: 'flex-1' }, [
+                h(CollapsibleTrigger, { asChild: true }, () =>
+                  h('button', { class: 'text-sm text-foreground flex items-center gap-1' }, [
+                    'Ver detalles',
+                    h(ChevronDown, { class: 'w-4 h-4 text-muted-foreground' })
+                  ])
+                )
+              ]),
+              h(CollapsibleContent, {}, () =>
+                h('div', { class: 'mt-2 max-h-48 overflow-auto pr-2' }, children)
+              )
+            ])
+          ])
+        ])
+      ]);
     },
   },
   {
