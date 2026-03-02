@@ -103,8 +103,20 @@ class CampaignController extends Controller
     public function create()
     {
         $this->authorize('create', Campaign::class);
+
+        $userId = request()->user()->id;
+        $assignments = DB::table('user_communication_channels')
+            ->where('user_id', $userId)
+            ->get(['company_id', 'communication_channel_id']);
+
+        $companiesQuery = Company::select('id', 'company_name')->orderBy('company_name');
+        if ($assignments->isNotEmpty()) {
+            $companyIds = $assignments->pluck('company_id')->unique()->values();
+            $companiesQuery->whereIn('id', $companyIds);
+        }
+
         return Inertia::render('Campaign/Create', [
-            'companies' => Company::select('id', 'company_name')->orderBy('company_name')->get(),
+            'companies' => $companiesQuery->get(),
         ]);
     }
 
