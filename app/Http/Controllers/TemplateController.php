@@ -378,7 +378,7 @@ class TemplateController extends Controller
             
     }
 
-    public function destroy(Request $request, $id)
+    public function delete(Request $request, $id)
     {
         $template = DB::table('message_templates')->where('id', $id)->first();
 
