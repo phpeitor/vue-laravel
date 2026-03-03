@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -162,6 +162,18 @@ const filters = ref({
 const formattedRange = computed(() => {
   if (!filters.value.date_start || !filters.value.date_end) return 'Selecciona rango'
   return `${filters.value.date_start} — ${filters.value.date_end}`
+})
+
+const companyName = computed(() => {
+  if (!filters.value.company_id) return ''
+  const company = companies.find(c => c.id === filters.value.company_id)
+  return company?.company_name ?? ''
+})
+
+const channelName = computed(() => {
+  if (!filters.value.communication_channel_id) return ''
+  const channel = channels.value.find(c => c.id === filters.value.communication_channel_id)
+  return channel?.channel_name ?? ''
 })
 
 const threadsList = ref<ThreadSummary[]>([])
@@ -1029,8 +1041,8 @@ const sendMessage = async () => {
             </div>
 
             <div class="mt-2 flex flex-wrap gap-2">
-              <Badge variant="secondary">Company: {{ filters.company_id || '' }}</Badge>
-              <Badge variant="secondary">Canal: {{ filters.communication_channel_id || '' }}</Badge>
+              <Badge variant="secondary">Company: {{ companyName || filters.company_id || '' }}</Badge>
+              <Badge variant="secondary">Canal: {{ channelName || filters.communication_channel_id || '' }}</Badge>
 
               <Badge v-if="isPhoneSearchActive" variant="secondary">
                 Búsqueda: {{ phoneSearchApplied }}
@@ -1080,30 +1092,9 @@ const sendMessage = async () => {
 
                         <div class="flex flex-col items-end gap-1">
                           <div class="flex items-center gap-1">
-                            <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
-                              {{ t.thread_status }}
-                            </Badge>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger as-child>
-                                  <Button
-                                    v-if="t.thread_status === 'OPEN'"
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    class="h-6 w-6"
-                                    :disabled="closingThreadId === t.thread_id"
-                                    @click.stop="openCloseModal(t.thread_id)"
-                                  >
-                                    <X class="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-
-                                <TooltipContent>
-                                  <p>Cerrar conversación</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                              <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
+                                {{ t.thread_status }}
+                              </Badge>
                           </div>
                           <span class="text-[11px] text-muted-foreground">{{ formatPE(t.last_at) }}</span>
                         </div>
@@ -1153,6 +1144,26 @@ const sendMessage = async () => {
                 <Button variant="outline" size="icon" title="Adjuntar (mock)">
                   <Paperclip class="h-5 w-5" />
                 </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        v-if="activeThread && (activeThread.thread_status === 'OPEN')"
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="h-8 w-8"
+                        :disabled="closingThreadId === activeThreadId"
+                        @click="openCloseModal(activeThread.thread_id)"
+                      >
+                        <MessageSquareX class="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Cerrar conversación</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <DropdownMenu>
                   <DropdownMenuTrigger as-child>
                     <Button variant="ghost" size="icon" title="Opciones">

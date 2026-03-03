@@ -389,7 +389,7 @@ function eliminarTemplate() {
   if (!templateToDelete.value) return;
 
   router.visit(
-    route('templates.destroy', {
+    route('templates.delete', {
       id: templateToDelete.value,
       companyId: companyId.value,
       communicationChannelId: channelId.value
