@@ -25,6 +25,7 @@ class StoreUserRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'username' => ['required', 'string', 'max:255', 'unique:users_laravel,username'],
             'email' => ['required', 'email', 'max:255', 'unique:users_laravel,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'exists:roles,name'],
@@ -42,6 +43,7 @@ class StoreUserRequest extends FormRequest
     {
         return [
             'name' => 'name',
+            'username' => 'username',
             'email' => 'email',
             'password' => 'password',
             'role' => 'role',

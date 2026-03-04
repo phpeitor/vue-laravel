@@ -27,7 +27,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string'], // Permitir email completo o solo username
+            'username' => ['required', 'string'],
             'password' => ['required', 'string'],
         ];
     }
@@ -41,6 +41,7 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
+<<<<<<< HEAD
         $input = $this->email;
         $user = null;
 
@@ -52,11 +53,15 @@ class LoginRequest extends FormRequest
             $user = \App\Models\User::where('email', 'like', $input . '@%')->first();
         }
 
+=======
+        $user = \App\Models\User::where('username', $this->username)->first();
+    
+>>>>>>> 7e66ca0dbe00759f9077562813acc265c1160685
         if (! $user || ! \Hash::check($this->password, $user->password)) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'username' => trans('auth.failed'),
             ]);
         }
 
@@ -64,7 +69,7 @@ class LoginRequest extends FormRequest
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => 'Usuario deshabilitado. Comunícate con desarrollo@fortelcorp.com',
+                'username' => 'Usuario deshabilitado. Comunícate con desarrollo@fortelcorp.com',
             ]);
         }
 
@@ -89,7 +94,7 @@ class LoginRequest extends FormRequest
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            'username' => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),

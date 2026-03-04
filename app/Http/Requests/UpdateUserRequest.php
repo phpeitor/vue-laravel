@@ -24,6 +24,7 @@ class UpdateUserRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'username' => ['required', 'string', 'max:255', 'unique:users_laravel,username,' . $this->user->id],
             'email' => ['required', 'email', 'max:255', 'unique:users_laravel,email,' . $this->user->id],
             'password' => ['nullable', 'string', 'min:8'],
             'estado' => ['required', 'boolean'], 
@@ -41,6 +42,7 @@ class UpdateUserRequest extends FormRequest
     {
         return [
             'name' => 'name',
+            'username' => 'username',
             'email' => 'email',
             'password' => 'password',
             'estado' => 'estado',

@@ -15,7 +15,7 @@ defineProps<{
 }>();
 
 const form = useForm({
-    email: '',
+    username: '',
     password: '',
     remember: false,
 });
@@ -48,17 +48,18 @@ const submit = () => {
                 <form @submit.prevent="submit" class="flex flex-col gap-6">
                     <div class="grid gap-6">
                         <div class="grid gap-2">
-                            <Label for="email">Email or Username</Label>
+							<Label for="username">Username</Label>
                             <Input
-                                id="email"
+                                id="username"
                                 type="text"
                                 required
                                 autofocus
                                 :tabindex="1"
-                                autocomplete="email"
-                                v-model="form.email"
+                                autocomplete="username"
+                                v-model="form.username"
+                                placeholder="usuario"
                             />
-                            <InputError :message="form.errors.email" />
+                            <InputError :message="form.errors.username" />
                         </div>
 
                         <div class="grid gap-2">
