@@ -133,7 +133,15 @@ class ProcessExternalMessageEvent
             ]);
 
             // Disparar el evento MessageCreated para notificar al frontend
+            // Usamos broadcast() además de dispatch() para asegurar emisión inmediata
+            // (no depender del queue worker). Si prefieres usar colas, mantener
+            // solo la línea de dispatch() y ejecutar `php artisan queue:work`.
             \App\Events\MessageCreated::dispatch($message);
+            try {
+                broadcast(new \App\Events\MessageCreated($message))->toOthers();
+            } catch (\Throwable $e) {
+                Log::warning('No se pudo emitir MessageCreated via broadcast inmediato', ['error' => $e->getMessage()]);
+            }
 
             Log::info('Evento MessageCreated disparado para notificar al frontend', [
                 'message_id' => $message->id,
