@@ -28,6 +28,7 @@ const user = usePage().props.user;
 
 const form = useForm({
   name: user.data.name,
+  username: user.data.username,
   email: user.data.email,
   password: "",
   estado: user.data.estado == 1,
@@ -139,6 +140,17 @@ const submit = () => {
                       :class="{ 'border-red-500': form.errors.name }"
                     />
                     <InputError class="mt-2" :message="form.errors.name" />
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-foreground">Username</label>
+                    <input
+                      v-model="form.username"
+                      type="text"
+                      class="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2"
+                      :class="{ 'border-red-500': form.errors.username }"
+                    />
+                    <InputError class="mt-2" :message="form.errors.username" />
                   </div>
 
                   <div>
