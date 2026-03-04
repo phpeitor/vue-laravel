@@ -164,6 +164,18 @@ const formattedRange = computed(() => {
   return `${filters.value.date_start} — ${filters.value.date_end}`
 })
 
+const companyName = computed(() => {
+  if (!filters.value.company_id) return ''
+  const company = companies.find(c => c.id === filters.value.company_id)
+  return company?.company_name ?? ''
+})
+
+const channelName = computed(() => {
+  if (!filters.value.communication_channel_id) return ''
+  const channel = channels.value.find(c => c.id === filters.value.communication_channel_id)
+  return channel?.channel_name ?? ''
+})
+
 const threadsList = ref<ThreadSummary[]>([])
 const threadsNextCursor = ref<number | null>(null)
 
@@ -1029,8 +1041,8 @@ const sendMessage = async () => {
             </div>
 
             <div class="mt-2 flex flex-wrap gap-2">
-              <Badge variant="secondary">Company: {{ filters.company_id || '' }}</Badge>
-              <Badge variant="secondary">Canal: {{ filters.communication_channel_id || '' }}</Badge>
+              <Badge variant="secondary">Company: {{ companyName || filters.company_id || '' }}</Badge>
+              <Badge variant="secondary">Canal: {{ channelName || filters.communication_channel_id || '' }}</Badge>
 
               <Badge v-if="isPhoneSearchActive" variant="secondary">
                 Búsqueda: {{ phoneSearchApplied }}

@@ -58,9 +58,25 @@ class TemplateController extends Controller
             }
         }
 
+        // Obtener compañías permitidas según asignaciones del usuario (si las tiene)
+        $userId = $request->user()->id;
+
+        $assignments = DB::table('user_communication_channels')
+            ->where('user_id', $userId)
+            ->get(['company_id', 'communication_channel_id']);
+
+        $companiesQuery = DB::table('companies')->select('id', 'company_name')->orderBy('company_name');
+
+        if ($assignments->isNotEmpty()) {
+            $companyIds = $assignments->pluck('company_id')->unique()->values();
+            $companiesQuery->whereIn('id', $companyIds);
+        }
+
+        $companies = $companiesQuery->get();
+
         return inertia('Template/Index', [
             'templates' => $templates,
-            'companies' => \DB::table('companies')->select('id', 'company_name')->get(),
+            'companies' => $companies,
             'channels' => $channels,
             'selectedCompanyId' => $companyId ? (int) $companyId : null,
             'selectedChannelId' => $communicationChannelId ? (int) $communicationChannelId : null,
@@ -362,7 +378,7 @@ class TemplateController extends Controller
             
     }
 
-    public function destroy(Request $request, $id)
+    public function delete(Request $request, $id)
     {
         $template = DB::table('message_templates')->where('id', $id)->first();
 
