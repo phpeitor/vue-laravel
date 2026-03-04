@@ -1459,7 +1459,7 @@ const sendMessage = async () => {
         <div class="mt-4">
           <div class="flex items-center justify-between">
             <Badge variant="secondary">
-              Company: {{ filters.company_id }} / Canal: {{ filters.communication_channel_id }}
+              Company: {{ companyName }} / Canal: {{ channelName }}
             </Badge>
 
             <Button
