@@ -224,6 +224,8 @@ class ChatController extends Controller
                 'a.id as thread_id',
                 'a.thread_status',
                 'a.sender_id',
+                'a.create_date',
+                'a.origin',
                 'a.first_conversation_date',
                 'a.last_conversation_date',
                 'c.name',

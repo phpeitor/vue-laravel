@@ -84,6 +84,8 @@ type ThreadSummary = {
   phone: string | null
   last_message: string | null
   last_at: string | null
+  create_date: string | null
+  origin: string | null
 }
 
 type MessageRow = {
@@ -241,6 +243,56 @@ const getMessagePlainText = (m: MessageRow): string => {
     return txt || (m.item_content ?? '')
   }
   return m.item_content ?? ''
+}
+
+/* ---------------------------
+   Timer functions
+---------------------------- */
+const currentTime = ref<number>(Date.now())
+
+// Actualizar tiempo actual cada segundo
+setInterval(() => {
+  currentTime.value = Date.now()
+}, 1000)
+
+const formatTimeDuration = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+const parseUTCDate = (utc: string | null): number => {
+  if (!utc) return 0
+  // Normaliza igual que formatPE: "2026-02-18 07:39:51" -> "2026-02-18T07:39:51Z"
+  const normalized = utc.includes('T') ? utc : utc.replace(' ', 'T')
+  const withTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
+  return new Date(withTZ).getTime()
+}
+
+const getThreadElapsedTime = (thread: ThreadSummary): string => {
+  if (!thread.create_date || thread.thread_status !== 'OPEN') return ''
+  const createTime = parseUTCDate(thread.create_date)
+  const elapsed = currentTime.value - createTime
+  return formatTimeDuration(elapsed)
+}
+
+const getThreadRemainingTime = (thread: ThreadSummary): string => {
+  if (!thread.create_date || thread.thread_status !== 'OPEN') return ''
+  const createTime = parseUTCDate(thread.create_date)
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000 // 24 horas
+  const remaining = twentyFourHoursMs - (currentTime.value - createTime)
+  
+  if (remaining <= 0) return '00:00:00'
+  return formatTimeDuration(remaining)
+}
+
+const getThreadOriginLabel = (origin: string | null): string => {
+  if (!origin) return ''
+  if (origin.toUpperCase() === 'IN') return 'INBOUND'
+  if (origin.toUpperCase() === 'OUT') return 'OUTBOUND'
+  return origin
 }
 
 import { useToast } from '@/components/ui/toast/use-toast'
@@ -1080,17 +1132,32 @@ const sendMessage = async () => {
 
                     <div class="min-w-0 flex-1">
                       <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-1">
                           <div class="truncate font-medium">
                             {{ displayThreadName(t) }}
-                            <span class="ml-2 text-xs text-muted-foreground">#{{ t.thread_id }}</span>
                           </div>
-                          <div class="truncate text-sm text-muted-foreground">
-                            {{ t.last_message }}
+                          <div class="text-xs text-muted-foreground mt-0.5">
+                            <div class="truncate">{{ t.last_message }}</div>
+                            <div class="mt-1 flex gap-0.5 items-center text-[11px]">
+                              <span class="inline-flex px-1 py-0.5 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 rounded font-semibold">
+                                #{{ t.thread_id }}
+                              </span>
+                              <span v-if="t.origin" class="inline-flex px-1 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded font-semibold">
+                                {{ getThreadOriginLabel(t.origin) }}
+                              </span>
+                            </div>
+                            <div v-if="t.thread_status === 'OPEN' && t.create_date" class="mt-0.5 flex gap-0.5 items-center text-[11px]">
+                              <span class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
+                                ⏱ {{ getThreadElapsedTime(t) }}
+                              </span>
+                              <span class="inline-flex px-1 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded whitespace-nowrap">
+                                ⏳ {{ getThreadRemainingTime(t) }}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        <div class="flex flex-col items-end gap-1">
+                        <div class="flex flex-col items-end gap-1 flex-shrink-0">
                           <div class="flex items-center gap-1">
                               <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
                                 {{ t.thread_status }}
