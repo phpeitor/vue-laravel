@@ -6,8 +6,10 @@ use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use App\Models\Thread;
 use App\Models\Message;
+use App\Models\User;
 use App\Observers\ThreadObserver;
 use App\Observers\MessageObserver;
+use App\Observers\UserObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Thread::observe(ThreadObserver::class);
         Message::observe(MessageObserver::class);
+        User::observe(UserObserver::class);
 
         Inertia::share([
             'config' => [

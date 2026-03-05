@@ -18,6 +18,9 @@ class RoleAndPermissionSeeder extends Seeder
             'add user',
             'templates',
             'add template',
+            'campaigns',
+            'add campaign',
+            'chat',
         ];
 
         foreach ($permissions as $permission) {
@@ -25,6 +28,8 @@ class RoleAndPermissionSeeder extends Seeder
         }
 
         $admin = Role::firstOrCreate(['name' => 'admin']);
+        $supervisor = Role::firstOrCreate(['name' => 'supervisor']);
+        $asesor = Role::firstOrCreate(['name' => 'asesor']);
         $user = Role::firstOrCreate(['name' => 'user']);
 
         $admin->syncPermissions([
@@ -34,10 +39,30 @@ class RoleAndPermissionSeeder extends Seeder
             'add user',
             'templates',
             'add template',
+            'campaigns',
+            'add campaign',
+            'chat',
+        ]);
+
+        $supervisor->syncPermissions([
+            // 'users',
+            // 'edit user',
+            // 'add user',
+            'templates',
+            'add template',
+            'campaigns',
+            'add campaign',
+            'chat',
+        ]);
+
+        $asesor->syncPermissions([
+            // 'templates',
+            // 'campaigns',
+            'chat',
         ]);
 
         $user->syncPermissions([
-            'templates',
+             'templates',
         ]);
 
         $email = request()->get('email');
@@ -48,9 +73,9 @@ class RoleAndPermissionSeeder extends Seeder
             return;
         }
 
-        $validRoles = ['admin', 'user'];
+        $validRoles = ['admin', 'supervisor', 'asesor', 'user'];
         if (!in_array($roleInput, $validRoles)) {
-            $this->command->error("❌ Rol inválido: '$roleInput'. Usa: admin o user.");
+            $this->command->error("❌ Rol inválido: '$roleInput'. Usa: admin, supervisor, asesor o user.");
             return;
         }
 
