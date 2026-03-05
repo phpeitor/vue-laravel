@@ -39,42 +39,40 @@ class LoginRequest extends FormRequest
      */
     public function authenticate(): void
     {
-        $this->ensureIsNotRateLimited();
+        /*$this->ensureIsNotRateLimited();
 
-<<<<<<< HEAD
-        $input = $this->email;
-        $user = null;
-
-        // Si contiene @, buscar exactamente ese email
-        if (strpos($input, '@') !== false) {
-            $user = \App\Models\User::where('email', $input)->first();
-        } else {
-            // Si no contiene @, buscar email que empiece con {input}@
-            $user = \App\Models\User::where('email', 'like', $input . '@%')->first();
-        }
-
-=======
-        $user = \App\Models\User::where('username', $this->username)->first();
-    
->>>>>>> 7e66ca0dbe00759f9077562813acc265c1160685
-        if (! $user || ! \Hash::check($this->password, $user->password)) {
+        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
+            throw ValidationException::withMessages([
+                'email' => trans('auth.failed'),
+            ]);
+        }
+
+        RateLimiter::clear($this->throttleKey());*/
+
+        $this->ensureIsNotRateLimited();
+
+        $user = \App\Models\User::where('username', $this->username)->first();
+    
+        if (! $user || ! \Hash::check($this->password, $user->password)) {
+            RateLimiter::hit($this->throttleKey());
+    
             throw ValidationException::withMessages([
                 'username' => trans('auth.failed'),
             ]);
         }
-
+    
         if ($user->estado == 0) {
             RateLimiter::hit($this->throttleKey());
-
+    
             throw ValidationException::withMessages([
                 'username' => 'Usuario deshabilitado. Comunícate con desarrollo@fortelcorp.com',
             ]);
         }
-
+    
         RateLimiter::clear($this->throttleKey());
-
+    
         Auth::login($user, $this->boolean('remember'));
     }
 
