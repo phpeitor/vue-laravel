@@ -44,7 +44,7 @@ class UserController extends Controller
 
         return inertia('User/Index', [
             'users' => UserResource::collection(
-                $userQuery->paginate(5)->withQueryString()
+                $userQuery->paginate(10)->withQueryString()
             ),
             'search' => $request->search ?? '',
             'sort' => $sort,

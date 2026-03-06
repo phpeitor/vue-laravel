@@ -973,7 +973,7 @@ const sendMessage = async () => {
   <Head title="Chat" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[400px_1fr]">
         <!-- Sidebar -->
         <Card class="h-[78vh] flex flex-col overflow-hidden">
           <CardHeader class="pb-3">
@@ -1171,13 +1171,13 @@ const sendMessage = async () => {
                               <span v-if="t.origin" class="inline-flex px-1 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded font-semibold">
                                 {{ getThreadOriginLabel(t.origin) }}
                               </span>
-                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
+                              <span v-if="t.thread_status === 'OPEN' && t.create_date"  class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
                                 ⏱ {{ getThreadElapsedTime(t) }}
                               </span>
                               <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded whitespace-nowrap">
                                 ⏳ {{ getThreadRemainingTime(t) }}
                               </span>
-                            </div>
+                            </div>                            
                           </div>
                         </div>
 
