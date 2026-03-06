@@ -337,6 +337,9 @@ const selT1 = ref<string>('')
 const selT2 = ref<string>('')
 const selT3Id = ref<number | null>(null)
 const selT3Label = ref<string>('')
+const t1Open = ref(false)
+const t2Open = ref(false)
+const t3Open = ref(false)
 
 const canConfirmClose = computed(() => !!closeThreadTargetId.value && !!selT3Id.value)
 
@@ -346,6 +349,9 @@ const resetCloseForm = () => {
   selT3Id.value = null
   selT3Label.value = ''
   tipRows.value = []
+  t1Open.value = false
+  t2Open.value = false
+  t3Open.value = false
 }
 
 const fetchTipificaciones = async () => {
@@ -762,7 +768,11 @@ const subscribeCompany = (companyId: number) => {
             variant: 'success',
           })
         }
-        // si es el thread activo, lo agregas aquí también (o lo dejas al thread channel)
+
+        // Si el thread está abierto, recargar mensajes desde BD para mostrar el nuevo
+        if (isActiveScope && activeThreadId.value === eventThreadId && eventThreadId > 0) {
+          fetchMessages(eventThreadId).then(() => scrollToBottom())
+        }
     })
 }
 
@@ -954,12 +964,21 @@ const sendMessageWithText = async (msg: string) => {
     await axios.post(`/api/chat/threads/${threadId}/reply`, {
       message: msg,
       messageType: 'text',
-      userId: 1,
+      userId: (page.props.auth as any)?.user?.id ?? null,
     },{
       headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
-  } catch (e) {
-    console.error(e)
+  } catch (e: any) {
+    // Marcar el optimistic como fallido
+    const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
+    if (idx >= 0) messagesList.value.splice(idx, 1)
+
+    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar el mensaje'
+    toast({
+      title: 'No se pudo enviar',
+      description: serverMsg,
+      variant: 'destructive',
+    })
   }
 }
 
@@ -1174,7 +1193,13 @@ const sendMessage = async () => {
                               <span v-if="t.thread_status === 'OPEN' && t.create_date"  class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
                                 ⏱ {{ getThreadElapsedTime(t) }}
                               </span>
-                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded whitespace-nowrap">
+                              <span
+                                v-if="t.thread_status === 'OPEN' && t.create_date"
+                                class="inline-flex px-1 py-0.5 rounded whitespace-nowrap"
+                                :class="getThreadRemainingTime(t) === '00:00:00'
+                                  ? 'bg-red-600 text-white font-bold animate-pulse'
+                                  : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'"
+                              >
                                 ⏳ {{ getThreadRemainingTime(t) }}
                               </span>
                             </div>                            
@@ -1445,7 +1470,7 @@ const sendMessage = async () => {
           <!-- Tipificación 1 -->
           <div class="grid gap-2">
             <Label>Tipificación 1</Label>
-            <Popover>
+            <Popover v-model:open="t1Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between">
                   <span class="truncate">{{ selT1 || 'Seleccionar...' }}</span>
@@ -1461,7 +1486,7 @@ const sendMessage = async () => {
                       v-for="opt in t1Options"
                       :key="opt"
                       :value="opt"
-                      @select="() => (selT1 = opt)"
+                      @select="() => { selT1 = opt; t1Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT1 === opt ? 'opacity-100' : 'opacity-0')" />
                       {{ opt }}
@@ -1475,7 +1500,7 @@ const sendMessage = async () => {
           <!-- Tipificación 2 -->
           <div class="grid gap-2">
             <Label>Tipificación 2</Label>
-            <Popover>
+            <Popover v-model:open="t2Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1">
                   <span class="truncate">{{ selT2 || 'Seleccionar...' }}</span>
@@ -1491,7 +1516,7 @@ const sendMessage = async () => {
                       v-for="opt in t2Options"
                       :key="opt"
                       :value="opt"
-                      @select="() => (selT2 = opt)"
+                      @select="() => { selT2 = opt; t2Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT2 === opt ? 'opacity-100' : 'opacity-0')" />
                       {{ opt }}
@@ -1505,7 +1530,7 @@ const sendMessage = async () => {
           <!-- Tipificación 3 (esta ya amarra a id) -->
           <div class="grid gap-2">
             <Label>Tipificación 3</Label>
-            <Popover>
+            <Popover v-model:open="t3Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1 || !selT2">
                   <span class="truncate">{{ selT3Label || 'Seleccionar...' }}</span>
@@ -1521,7 +1546,7 @@ const sendMessage = async () => {
                       v-for="opt in t3Options"
                       :key="opt.id"
                       :value="opt.label"
-                      @select="() => { selT3Id = opt.id; selT3Label = opt.label }"
+                      @select="() => { selT3Id = opt.id; selT3Label = opt.label; t3Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT3Id === opt.id ? 'opacity-100' : 'opacity-0')" />
                       {{ opt.label }}

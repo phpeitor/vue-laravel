@@ -20,7 +20,9 @@ class EventPushController
             'data' => 'required|array',
         ]);
 
-        broadcast(new ExternalEventReceived($data))->toOthers();
+        // Usamos event() y no broadcast() para que solo se dispare el listener
+        // sin emitir ExternalEventReceived por WebSocket (evita el doble broadcast)
+        event(new ExternalEventReceived($data));
 
         return response()->json(['status' => 'ok']);
     }
