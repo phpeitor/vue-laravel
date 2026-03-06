@@ -84,6 +84,9 @@ type ThreadSummary = {
   phone: string | null
   last_message: string | null
   last_at: string | null
+  create_date: string | null
+  origin: string | null
+  hasNewMessage?: boolean
 }
 
 type MessageRow = {
@@ -182,6 +185,11 @@ const threadsNextCursor = ref<number | null>(null)
 const activeThreadId = ref<number | null>(null)
 const activeThread = computed<ThreadSummary | null>(() => {
   if (!activeThreadId.value) return null
+  // Limpiar notificación visual al abrir el thread
+  const idx = threadsList.value.findIndex(t => t.thread_id === activeThreadId.value)
+  if (idx >= 0 && threadsList.value[idx].hasNewMessage) {
+    threadsList.value[idx].hasNewMessage = false
+  }
   return threadsList.value.find(t => t.thread_id === activeThreadId.value) ?? null
 })
 
@@ -241,6 +249,56 @@ const getMessagePlainText = (m: MessageRow): string => {
     return txt || (m.item_content ?? '')
   }
   return m.item_content ?? ''
+}
+
+/* ---------------------------
+   Timer functions
+---------------------------- */
+const currentTime = ref<number>(Date.now())
+
+// Actualizar tiempo actual cada segundo
+setInterval(() => {
+  currentTime.value = Date.now()
+}, 1000)
+
+const formatTimeDuration = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 66
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+const parseUTCDate = (utc: string | null): number => {
+  if (!utc) return 0
+  // Normaliza igual que formatPE: "2026-02-18 07:39:51" -> "2026-02-18T07:39:51Z"
+  const normalized = utc.includes('T') ? utc : utc.replace(' ', 'T')
+  const withTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
+  return new Date(withTZ).getTime()
+}
+
+const getThreadElapsedTime = (thread: ThreadSummary): string => {
+  if (!thread.create_date || thread.thread_status !== 'OPEN') return ''
+  const createTime = parseUTCDate(thread.create_date)
+  const elapsed = currentTime.value - createTime
+  return formatTimeDuration(elapsed)
+}
+
+const getThreadRemainingTime = (thread: ThreadSummary): string => {
+  if (!thread.create_date || thread.thread_status !== 'OPEN') return ''
+  const createTime = parseUTCDate(thread.create_date)
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000 // 24 horas
+  const remaining = twentyFourHoursMs - (currentTime.value - createTime)
+  
+  if (remaining <= 0) return '00:00:00'
+  return formatTimeDuration(remaining)
+}
+
+const getThreadOriginLabel = (origin: string | null): string => {
+  if (!origin) return ''
+  if (origin.toUpperCase() === 'IN') return 'INBOUND'
+  if (origin.toUpperCase() === 'OUT') return 'OUTBOUND'
+  return origin
 }
 
 import { useToast } from '@/components/ui/toast/use-toast'
@@ -668,23 +726,43 @@ const subscribeCompany = (companyId: number) => {
     })
     .listen('.message.created', (e:any) => {
         console.log('REVERB message.created', e);
+
+        // Soporta payload plano o anidado (e.data)
+        const raw = e?.data ?? e
+        const eventThreadId = Number(raw?.thread_id ?? 0)
+        const eventCompanyId = Number(raw?.company_id)
+        const eventChannelId = Number(raw?.communication_channel_id)
+        const activeCompanyId = Number(filters.value.company_id)
+        const activeChannelId = Number(filters.value.communication_channel_id)
+
+        // Si no trae ids de scope, no notificar para evitar falsos positivos
+        const hasScopeIds = Number.isFinite(eventCompanyId) && Number.isFinite(eventChannelId)
+        const isActiveScope =
+          hasScopeIds &&
+          eventCompanyId === activeCompanyId &&
+          eventChannelId === activeChannelId
+
         // actualizar preview en threadsList
-        const idx = threadsList.value.findIndex(t => t.thread_id === e.thread_id)
+        const idx = threadsList.value.findIndex(t => t.thread_id === eventThreadId)
         if (idx >= 0) {
-        threadsList.value[idx] = {
+          threadsList.value[idx] = {
             ...threadsList.value[idx],
-            last_message: e.item_content,
-            last_at: e.message_create_date,
-        }
-        }
-
-        // si no es el thread activo, toast (y NO lo agregues al chat abierto)
-        if (activeThreadId.value !== e.thread_id) {
-        // toast: "Nuevo mensaje de X"
-        return
+            last_message: raw?.item_content ?? threadsList.value[idx].last_message,
+            last_at: raw?.message_create_date ?? threadsList.value[idx].last_at,
+            hasNewMessage: isActiveScope && activeThreadId.value !== eventThreadId,
+          }
         }
 
-        // si es el activo, lo agregas aquí también (o lo dejas al thread channel)
+        // Mostrar toast cuando coincide company+channel activos
+        // (siempre, incluso si el thread está abierto, porque el mensaje externo no se guarda en BD)
+        if (isActiveScope) {
+          toast({
+            title: `📱 ${raw?.phone ?? ''}`,
+            description: `💬 ${raw?.item_content ?? ''}`,
+            variant: 'success',
+          })
+        }
+        // si es el thread activo, lo agregas aquí también (o lo dejas al thread channel)
     })
 }
 
@@ -1080,21 +1158,38 @@ const sendMessage = async () => {
 
                     <div class="min-w-0 flex-1">
                       <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-1">
                           <div class="truncate font-medium">
                             {{ displayThreadName(t) }}
-                            <span class="ml-2 text-xs text-muted-foreground">#{{ t.thread_id }}</span>
                           </div>
-                          <div class="truncate text-sm text-muted-foreground">
-                            {{ t.last_message }}
+                          <div class="text-xs text-muted-foreground mt-0.5">
+                            <div class="truncate">{{ t.last_message }}</div>
+                            <div class="mt-1 flex gap-0.5 items-center text-[10px]">
+                              <span class="inline-flex px-1 py-0.5 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 rounded font-semibold">
+                                #{{ t.thread_id }}
+                              </span>
+                              <span v-if="t.origin" class="inline-flex px-1 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded font-semibold">
+                                {{ getThreadOriginLabel(t.origin) }}
+                              </span>
+                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
+                                ⏱ {{ getThreadElapsedTime(t) }}
+                              </span>
+                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded whitespace-nowrap">
+                                ⏳ {{ getThreadRemainingTime(t) }}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        <div class="flex flex-col items-end gap-1">
+                        <div class="flex flex-col items-end gap-1 flex-shrink-0">
                           <div class="flex items-center gap-1">
                               <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
                                 {{ t.thread_status }}
                               </Badge>
+                              <span v-if="t.hasNewMessage && t.thread_status === 'OPEN'" class="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-bold animate-pulse">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-white"></span>
+                                Nuevo
+                              </span>
                           </div>
                           <span class="text-[11px] text-muted-foreground">{{ formatPE(t.last_at) }}</span>
                         </div>

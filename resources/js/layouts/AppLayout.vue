@@ -33,14 +33,7 @@ onMounted(() => {
                 });
         });
 
-    window.Echo.channel('external-events')
-        .listen('.ExternalEvent', (e: any) => {
-            toast({
-                title: `Evento: ${e.payload.type}`,
-                description: JSON.stringify(e.payload.data),
-                variant: 'info', 
-            });
-        });
+
 });
 </script>
 

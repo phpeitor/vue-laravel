@@ -29,6 +29,7 @@ const props = defineProps({
 
 const form = useForm({
   name: "",
+  username: "",
   email: "",
   password: "",
   role: "",
@@ -127,6 +128,18 @@ const submit = () => {
                       :class="{ 'border-red-500': form.errors.name }"
                     />
                     <InputError class="mt-2" :message="form.errors.name" />
+                  </div>
+
+                  <div>
+                    <label for="username" class="block text-sm font-medium text-foreground">Username</label>
+                    <input
+                      v-model="form.username"
+                      type="text"
+                      id="username"
+                      class="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-foreground focus:ring-primary focus:border-primary"
+                      :class="{ 'border-red-500': form.errors.username }"
+                    />
+                    <InputError class="mt-2" :message="form.errors.username" />
                   </div>
 
                   <div>
