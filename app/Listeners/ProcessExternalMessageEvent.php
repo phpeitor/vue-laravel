@@ -3,155 +3,55 @@
 namespace App\Listeners;
 
 use App\Events\ExternalEventReceived;
-use App\Models\Message;
-use App\Models\Thread;
-use App\Models\Customer;
+use App\Events\IncomingMessageNotification;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class ProcessExternalMessageEvent
 {
-    /**
-     * Create the event listener.
-     */
-    public function __construct()
-    {
-        //
-    }
+    public function __construct() {}
 
-    /**
-     * Handle the event.
-     * 
-     * El webhook que envía omnichannel cuando llega un mensaje desde WhatsApp
-     * contiene la estructura del mensaje que ya fue creado en la BD.
-     * Este listener:
-     * 1. Valida que el mensaje sea de tipo "message.incoming"
-     * 2. Verifica que exista el Message en la BD
-     * 3. Carga la relación thread
-     * 4. Dispara manualmente el evento MessageCreated si es necesario
-     */
     public function handle(ExternalEventReceived $event): void
     {
         try {
             $payload = $event->payload;
+            $type    = $payload['type'] ?? '';
 
-            // Log del payload completo para verificar estructura real
-            Log::debug('ProcessExternalMessageEvent::handle() procesando evento', [
-                'type' => $payload['type'] ?? 'unknown',
-                'payload_keys' => array_keys($payload),
-                'data_keys' => isset($payload['data']) ? array_keys($payload['data']) : [],
-                'full_payload' => $payload, // log completo para debugging
-            ]);
-
-            $type = $payload['type'] ?? '';
-
-            // Solo procesar eventos de mensaje entrante
             if ($type !== 'message.incoming' && $type !== 'message.received') {
-                Log::info('ExternalEvent ignorado (tipo no es mensaje)', ['type' => $type]);
                 return;
             }
 
-            $data = $payload['data'] ?? [];
+            $data      = $payload['data'] ?? [];
+            $companyId = (int) ($data['company_id']               ?? 0);
+            $channelId = (int) ($data['communication_channel_id'] ?? 0);
 
-            // Validación básica
-            $threadId = (int) ($data['thread_id'] ?? 0);
-            $customerId = (int) ($data['customer_id'] ?? 0);
-            $externalId = (string) ($data['external_id'] ?? '');
-            $itemType = (string) ($data['item_type'] ?? 'text');
-            $itemContent = (string) ($data['item_content'] ?? '');
-            $createDate = $data['create_date'] ?? null;
-
-            if (!$threadId || !$customerId) {
-                Log::warning('ExternalEvent incompleto (falta thread/customer)', [
-                    'thread_id' => $threadId,
-                    'customer_id' => $customerId,
-                    'external_id' => $externalId,
-                ]);
+            if (!$companyId || !$channelId) {
+                Log::warning('IncomingMessage: falta company_id o communication_channel_id', ['data' => $data]);
                 return;
             }
 
-            // 1) Intentar buscar por external_id si está presente
-            $message = null;
-            if ($externalId !== '') {
-                $message = Message::with('thread')->where('external_id', $externalId)->first();
-            }
+            broadcast(new IncomingMessageNotification([
+                'thread_id'                => $data['thread_id']    ?? null,
+                'company_id'               => $companyId,
+                'communication_channel_id' => $channelId,
+                'item_content'             => $data['item_content'] ?? '',
+                'item_type'                => $data['item_type']    ?? 'text',
+                'name'                     => $data['name']         ?? '',
+                'phone'                    => $data['phone']        ?? '',
+                'message_create_date'      => $data['create_date']  ?? now()->toISOString(),
+                'origin'                   => 'EXTERNAL',
+                'enviado_por'              => 'USUARIO',
+            ]));
 
-            // 2) Si no está, intentar buscar por contenido y ventana de tiempo (si create_date viene)
-            if (!$message && $createDate) {
-                try {
-                    $dt = Carbon::parse($createDate);
-                    $start = $dt->copy()->subMinutes(2)->toDateTimeString();
-                    $end = $dt->copy()->addMinutes(2)->toDateTimeString();
-
-                    $message = Message::with('thread')
-                        ->where('thread_id', $threadId)
-                        ->where('item_content', $itemContent)
-                        ->whereBetween('create_date', [$start, $end])
-                        ->first();
-                } catch (\Throwable $e) {
-                    // parsing failed, seguir con otros métodos
-                    Log::debug('No se pudo parsear create_date para búsqueda', ['create_date' => $createDate]);
-                }
-            }
-
-            // 3) Si sigue sin encontrar, intentar por thread + customer + contenido
-            if (!$message) {
-                $message = Message::with('thread')
-                    ->where('thread_id', $threadId)
-                    ->where('customer_id', $customerId)
-                    ->where('item_content', $itemContent)
-                    ->orderByDesc('id')
-                    ->first();
-            }
-
-            // 4) Si aún no existe, crear como fallback (solo para evitar perder notificación)
-            if (!$message) {
-                $message = Message::create([
-                    'thread_id' => $threadId,
-                    'customer_id' => $customerId,
-                    'external_id' => $externalId !== '' ? $externalId : null,
-                    'item_type' => $itemType,
-                    'item_content' => $itemContent,
-                    'origin' => 'IN',
-                    'create_date' => $createDate ?? now(),
-                ]);
-
-                // eager load thread
-                $message->load('thread');
-
-                Log::info('Mensaje creado por listener (fallback)', [
-                    'message_id' => $message->id,
-                    'thread_id' => $threadId,
-                    'external_id' => $externalId,
-                ]);
-            }
-
-            Log::info('Mensaje encontrado/creado para notificación', [
-                'message_id' => $message->id,
-                'thread_id' => $threadId,
-                'external_id' => $message->external_id,
-            ]);
-
-            // Disparar el evento MessageCreated para notificar al frontend
-            // Usamos broadcast() además de dispatch() para asegurar emisión inmediata
-            // (no depender del queue worker). Si prefieres usar colas, mantener
-            // solo la línea de dispatch() y ejecutar `php artisan queue:work`.
-            \App\Events\MessageCreated::dispatch($message);
-            try {
-                broadcast(new \App\Events\MessageCreated($message))->toOthers();
-            } catch (\Throwable $e) {
-                Log::warning('No se pudo emitir MessageCreated via broadcast inmediato', ['error' => $e->getMessage()]);
-            }
-
-            Log::info('Evento MessageCreated disparado para notificar al frontend', [
-                'message_id' => $message->id,
-                'thread_id' => $threadId,
+            Log::info('IncomingMessage broadcast enviado', [
+                'thread_id'  => $data['thread_id'] ?? null,
+                'company_id' => $companyId,
+                'channel_id' => $channelId,
             ]);
 
         } catch (\Throwable $e) {
             Log::error('Error procesando ExternalEventReceived', [
                 'exception' => $e->getMessage(),
-                'payload' => $event->payload,
+                'payload'   => $event->payload,
             ]);
         }
     }

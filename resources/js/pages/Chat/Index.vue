@@ -86,6 +86,7 @@ type ThreadSummary = {
   last_at: string | null
   create_date: string | null
   origin: string | null
+  hasNewMessage?: boolean
 }
 
 type MessageRow = {
@@ -184,6 +185,11 @@ const threadsNextCursor = ref<number | null>(null)
 const activeThreadId = ref<number | null>(null)
 const activeThread = computed<ThreadSummary | null>(() => {
   if (!activeThreadId.value) return null
+  // Limpiar notificación visual al abrir el thread
+  const idx = threadsList.value.findIndex(t => t.thread_id === activeThreadId.value)
+  if (idx >= 0 && threadsList.value[idx].hasNewMessage) {
+    threadsList.value[idx].hasNewMessage = false
+  }
   return threadsList.value.find(t => t.thread_id === activeThreadId.value) ?? null
 })
 
@@ -259,7 +265,7 @@ const formatTimeDuration = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000)
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  const seconds = totalSeconds % 66
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
 }
 
@@ -720,23 +726,43 @@ const subscribeCompany = (companyId: number) => {
     })
     .listen('.message.created', (e:any) => {
         console.log('REVERB message.created', e);
+
+        // Soporta payload plano o anidado (e.data)
+        const raw = e?.data ?? e
+        const eventThreadId = Number(raw?.thread_id ?? 0)
+        const eventCompanyId = Number(raw?.company_id)
+        const eventChannelId = Number(raw?.communication_channel_id)
+        const activeCompanyId = Number(filters.value.company_id)
+        const activeChannelId = Number(filters.value.communication_channel_id)
+
+        // Si no trae ids de scope, no notificar para evitar falsos positivos
+        const hasScopeIds = Number.isFinite(eventCompanyId) && Number.isFinite(eventChannelId)
+        const isActiveScope =
+          hasScopeIds &&
+          eventCompanyId === activeCompanyId &&
+          eventChannelId === activeChannelId
+
         // actualizar preview en threadsList
-        const idx = threadsList.value.findIndex(t => t.thread_id === e.thread_id)
+        const idx = threadsList.value.findIndex(t => t.thread_id === eventThreadId)
         if (idx >= 0) {
-        threadsList.value[idx] = {
+          threadsList.value[idx] = {
             ...threadsList.value[idx],
-            last_message: e.item_content,
-            last_at: e.message_create_date,
-        }
-        }
-
-        // si no es el thread activo, toast (y NO lo agregues al chat abierto)
-        if (activeThreadId.value !== e.thread_id) {
-        // toast: "Nuevo mensaje de X"
-        return
+            last_message: raw?.item_content ?? threadsList.value[idx].last_message,
+            last_at: raw?.message_create_date ?? threadsList.value[idx].last_at,
+            hasNewMessage: isActiveScope && activeThreadId.value !== eventThreadId,
+          }
         }
 
-        // si es el activo, lo agregas aquí también (o lo dejas al thread channel)
+        // Mostrar toast cuando coincide company+channel activos
+        // (siempre, incluso si el thread está abierto, porque el mensaje externo no se guarda en BD)
+        if (isActiveScope) {
+          toast({
+            title: `📱 ${raw?.phone ?? ''}`,
+            description: `💬 ${raw?.item_content ?? ''}`,
+            variant: 'success',
+          })
+        }
+        // si es el thread activo, lo agregas aquí también (o lo dejas al thread channel)
     })
 }
 
@@ -1138,7 +1164,7 @@ const sendMessage = async () => {
                           </div>
                           <div class="text-xs text-muted-foreground mt-0.5">
                             <div class="truncate">{{ t.last_message }}</div>
-                            <div class="mt-1 flex gap-0.5 items-center text-[11px]">
+                            <div class="mt-1 flex gap-0.5 items-center text-[10px]">
                               <span class="inline-flex px-1 py-0.5 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 rounded font-semibold">
                                 #{{ t.thread_id }}
                               </span>
@@ -1160,6 +1186,10 @@ const sendMessage = async () => {
                               <Badge :variant="t.thread_status === 'OPEN' ? 'default' : 'secondary'">
                                 {{ t.thread_status }}
                               </Badge>
+                              <span v-if="t.hasNewMessage && t.thread_status === 'OPEN'" class="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-bold animate-pulse">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-white"></span>
+                                Nuevo
+                              </span>
                           </div>
                           <span class="text-[11px] text-muted-foreground">{{ formatPE(t.last_at) }}</span>
                         </div>
