@@ -93,6 +93,10 @@ watch(
 
 defineExpose({
   focus,
+  clear: () => {
+    if (el.value) el.value.innerHTML = ''
+    emit('update:modelValue', '')
+  },
   toggleBold: () => exec('bold'),
   toggleItalic: () => exec('italic'),
   toggleUnderline: () => exec('underline'),
