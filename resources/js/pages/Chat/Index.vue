@@ -44,7 +44,7 @@ const breadcrumbs = [
 
 import RichDraftInput from '@/components/RichDraftInput.vue'
 import { useTextFormat } from '@/composables/useTextFormat'
-const { displayThreadName, formatPE } = useTextFormat()
+const { displayThreadName, formatPE, formatReferral } = useTextFormat()
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText, htmlToWhatsappText } = useWhatsappFormatter()
 import { Label } from '@/components/ui/label'
@@ -249,6 +249,15 @@ const getMessagePlainText = (m: MessageRow): string => {
     return txt || (m.item_content ?? '')
   }
   return m.item_content ?? ''
+}
+
+/** Devuelve HTML final listo para v-html según el tipo de mensaje */
+const getMessageHtml = (m: MessageRow): string => {
+  if (m.item_type === 'referral') {
+    return formatReferral(m.item_content ?? '')
+  }
+  const raw = getMessagePlainText(m)
+  return raw ? formatWhatsappText(raw) : ''
 }
 
 /* ---------------------------
@@ -554,8 +563,7 @@ const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
     const created = formatPE(m.message_create_date)
-    const raw = getMessagePlainText(m)
-    const formatted = raw ? formatWhatsappText(raw) : ''
+    const formatted = getMessageHtml(m)
 
     return {
       id: String(m.message_id ?? `${m.thread_id}-${idx}`),
@@ -1684,7 +1692,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
-                    v-html="formatWhatsappText(getMessagePlainText(m) ?? '')"
+                    v-html="getMessageHtml(m)"
                   ></div>
                 </div>
               </div>
