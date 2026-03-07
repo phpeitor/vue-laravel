@@ -44,7 +44,7 @@ const breadcrumbs = [
 
 import RichDraftInput from '@/components/RichDraftInput.vue'
 import { useTextFormat } from '@/composables/useTextFormat'
-const { displayThreadName, formatPE } = useTextFormat()
+const { displayThreadName, formatPE, formatReferral } = useTextFormat()
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 const { formatWhatsappText, htmlToWhatsappText } = useWhatsappFormatter()
 import { Label } from '@/components/ui/label'
@@ -251,6 +251,15 @@ const getMessagePlainText = (m: MessageRow): string => {
   return m.item_content ?? ''
 }
 
+/** Devuelve HTML final listo para v-html según el tipo de mensaje */
+const getMessageHtml = (m: MessageRow): string => {
+  if (m.item_type === 'referral') {
+    return formatReferral(m.item_content ?? '')
+  }
+  const raw = getMessagePlainText(m)
+  return raw ? formatWhatsappText(raw) : ''
+}
+
 /* ---------------------------
    Timer functions
 ---------------------------- */
@@ -337,6 +346,9 @@ const selT1 = ref<string>('')
 const selT2 = ref<string>('')
 const selT3Id = ref<number | null>(null)
 const selT3Label = ref<string>('')
+const t1Open = ref(false)
+const t2Open = ref(false)
+const t3Open = ref(false)
 
 const canConfirmClose = computed(() => !!closeThreadTargetId.value && !!selT3Id.value)
 
@@ -346,6 +358,9 @@ const resetCloseForm = () => {
   selT3Id.value = null
   selT3Label.value = ''
   tipRows.value = []
+  t1Open.value = false
+  t2Open.value = false
+  t3Open.value = false
 }
 
 const fetchTipificaciones = async () => {
@@ -505,11 +520,34 @@ const fetchHistory = async (opts?: { append?: boolean }) => {
    Scroll helpers
 ---------------------------- */
 const scrollerRef = ref<HTMLElement | null>(null)
+const hasUnreadBelow = ref(false)
+
+const getScrollEl = (): HTMLElement | null => scrollerRef.value
+
+const isNearBottom = (): boolean => {
+  const el = getScrollEl()
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
 const scrollToBottom = async () => {
   await nextTick()
-  const el = scrollerRef.value
+  const el = getScrollEl()
   if (!el) return
   el.scrollTop = el.scrollHeight
+  hasUnreadBelow.value = false
+}
+
+const onScrollAreaScroll = () => {
+  if (isNearBottom()) hasUnreadBelow.value = false
+}
+
+const handleNewMessageScroll = () => {
+  if (isNearBottom()) {
+    scrollToBottom()
+  } else {
+    hasUnreadBelow.value = true
+  }
 }
 
 /* ---------------------------
@@ -519,8 +557,7 @@ const activeMessages = computed<UiMessage[]>(() => {
   return messagesList.value.map((m, idx) => {
     const sender: 'me' | 'them' = m.enviado_por === 'USUARIO' ? 'them' : 'me'
     const created = formatPE(m.message_create_date)
-    const raw = getMessagePlainText(m)
-    const formatted = raw ? formatWhatsappText(raw) : ''
+    const formatted = getMessageHtml(m)
 
     return {
       id: String(m.message_id ?? `${m.thread_id}-${idx}`),
@@ -742,7 +779,7 @@ const subscribeCompany = (companyId: number) => {
           eventCompanyId === activeCompanyId &&
           eventChannelId === activeChannelId
 
-        // actualizar preview en threadsList
+        // actualizar preview en threadsList o agregar si es nuevo
         const idx = threadsList.value.findIndex(t => t.thread_id === eventThreadId)
         if (idx >= 0) {
           threadsList.value[idx] = {
@@ -751,18 +788,30 @@ const subscribeCompany = (companyId: number) => {
             last_at: raw?.message_create_date ?? threadsList.value[idx].last_at,
             hasNewMessage: isActiveScope && activeThreadId.value !== eventThreadId,
           }
+        } else if (isActiveScope && eventThreadId > 0) {
+          // Thread nuevo: recargar lista en background sin resetear el activo
+          fetchThreads()
         }
 
         // Mostrar toast cuando coincide company+channel activos
         // (siempre, incluso si el thread está abierto, porque el mensaje externo no se guarda en BD)
         if (isActiveScope) {
+          const name = raw?.name?.trim() || null
+          const phone = raw?.phone ?? ''
+          const titleParts = name && name !== phone
+            ? `${name} · ${phone}`
+            : phone
           toast({
-            title: `📱 ${raw?.phone ?? ''}`,
+            title: `📱 ${titleParts}`,
             description: `💬 ${raw?.item_content ?? ''}`,
             variant: 'success',
           })
         }
-        // si es el thread activo, lo agregas aquí también (o lo dejas al thread channel)
+
+        // Si el thread está abierto, recargar mensajes desde BD y forzar scroll al fondo
+        if (isActiveScope && activeThreadId.value === eventThreadId && eventThreadId > 0) {
+          fetchMessages(eventThreadId).then(() => scrollToBottom())
+        }
     })
 }
 
@@ -892,11 +941,13 @@ onBeforeUnmount(() => {
 ---------------------------- */
 const onEditorSubmit = async (html: string) => {
   if (draftDisabled.value) return
-  // mandamos el texto convertido DIRECTO (sin depender del computed, evita race)
   const msg = htmlToWhatsappText(html).trim()
   if (!msg) return
 
-  // reutiliza tu lógica: te recomiendo extraer a sendMessageWithText(msg)
+  // Limpiar editor antes del envío (tanto ref como DOM del contenteditable)
+  draftHtml.value = ''
+  draftEditorRef.value?.clear?.()
+
   await sendMessageWithText(msg)
 }
 
@@ -954,12 +1005,21 @@ const sendMessageWithText = async (msg: string) => {
     await axios.post(`/api/chat/threads/${threadId}/reply`, {
       message: msg,
       messageType: 'text',
-      userId: 1,
+      userId: (page.props.auth as any)?.user?.id ?? null,
     },{
       headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
-  } catch (e) {
-    console.error(e)
+  } catch (e: any) {
+    // Marcar el optimistic como fallido
+    const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
+    if (idx >= 0) messagesList.value.splice(idx, 1)
+
+    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar el mensaje'
+    toast({
+      title: 'No se pudo enviar',
+      description: serverMsg,
+      variant: 'destructive',
+    })
   }
 }
 
@@ -1174,7 +1234,13 @@ const sendMessage = async () => {
                               <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
                                 ⏱ {{ getThreadElapsedTime(t) }}
                               </span>
-                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded whitespace-nowrap">
+                              <span
+                                v-if="t.thread_status === 'OPEN' && t.create_date"
+                                class="inline-flex px-1 py-0.5 rounded whitespace-nowrap"
+                                :class="getThreadRemainingTime(t) === '00:00:00'
+                                  ? 'bg-red-600 text-white font-bold animate-pulse'
+                                  : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'"
+                              >
                                 ⏳ {{ getThreadRemainingTime(t) }}
                               </span>
                             </div>
@@ -1280,10 +1346,9 @@ const sendMessage = async () => {
           <Separator />
 
           <!-- Messages -->
-          <div class="flex-1 overflow-hidden">
-            <ScrollArea class="h-full">
-              <div ref="scrollerRef" class="h-full overflow-auto p-4">
-                <div class="space-y-3">
+          <div class="flex-1 overflow-hidden relative">
+            <div ref="scrollerRef" class="h-full overflow-y-auto p-4" @scroll.passive="onScrollAreaScroll">
+              <div class="space-y-3">
 
                   <div class="flex justify-center">
                     <Button
@@ -1325,9 +1390,27 @@ const sendMessage = async () => {
                   <div v-if="!activeMessages.length" class="text-sm text-muted-foreground">
                     Selecciona una conversación
                   </div>
-                </div>
               </div>
-            </ScrollArea>
+            </div>
+
+            <!-- Botón flotante nuevo mensaje -->
+            <Transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 translate-y-2"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 translate-y-2"
+            >
+              <button
+                v-if="hasUnreadBelow"
+                type="button"
+                @click="scrollToBottom"
+                class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shadow-lg hover:bg-primary/90 transition-colors"
+              >
+                ▼ Nuevo mensaje
+              </button>
+            </Transition>
           </div>
 
           <Separator />
@@ -1445,7 +1528,7 @@ const sendMessage = async () => {
           <!-- Tipificación 1 -->
           <div class="grid gap-2">
             <Label>Tipificación 1</Label>
-            <Popover>
+            <Popover v-model:open="t1Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between">
                   <span class="truncate">{{ selT1 || 'Seleccionar...' }}</span>
@@ -1461,7 +1544,7 @@ const sendMessage = async () => {
                       v-for="opt in t1Options"
                       :key="opt"
                       :value="opt"
-                      @select="() => (selT1 = opt)"
+                      @select="() => { selT1 = opt; t1Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT1 === opt ? 'opacity-100' : 'opacity-0')" />
                       {{ opt }}
@@ -1475,7 +1558,7 @@ const sendMessage = async () => {
           <!-- Tipificación 2 -->
           <div class="grid gap-2">
             <Label>Tipificación 2</Label>
-            <Popover>
+            <Popover v-model:open="t2Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1">
                   <span class="truncate">{{ selT2 || 'Seleccionar...' }}</span>
@@ -1491,7 +1574,7 @@ const sendMessage = async () => {
                       v-for="opt in t2Options"
                       :key="opt"
                       :value="opt"
-                      @select="() => (selT2 = opt)"
+                      @select="() => { selT2 = opt; t2Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT2 === opt ? 'opacity-100' : 'opacity-0')" />
                       {{ opt }}
@@ -1505,7 +1588,7 @@ const sendMessage = async () => {
           <!-- Tipificación 3 (esta ya amarra a id) -->
           <div class="grid gap-2">
             <Label>Tipificación 3</Label>
-            <Popover>
+            <Popover v-model:open="t3Open">
               <PopoverTrigger as-child>
                 <Button variant="outline" role="combobox" class="w-full justify-between" :disabled="!selT1 || !selT2">
                   <span class="truncate">{{ selT3Label || 'Seleccionar...' }}</span>
@@ -1521,7 +1604,7 @@ const sendMessage = async () => {
                       v-for="opt in t3Options"
                       :key="opt.id"
                       :value="opt.label"
-                      @select="() => { selT3Id = opt.id; selT3Label = opt.label }"
+                      @select="() => { selT3Id = opt.id; selT3Label = opt.label; t3Open = false }"
                     >
                       <Check :class="cn('mr-2 h-4 w-4', selT3Id === opt.id ? 'opacity-100' : 'opacity-0')" />
                       {{ opt.label }}
@@ -1608,7 +1691,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
-                    v-html="formatWhatsappText(getMessagePlainText(m) ?? '')"
+                    v-html="getMessageHtml(m)"
                   ></div>
                 </div>
               </div>
