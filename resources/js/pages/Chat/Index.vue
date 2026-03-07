@@ -748,7 +748,7 @@ const subscribeCompany = (companyId: number) => {
           eventCompanyId === activeCompanyId &&
           eventChannelId === activeChannelId
 
-        // actualizar preview en threadsList
+        // actualizar preview en threadsList o agregar si es nuevo
         const idx = threadsList.value.findIndex(t => t.thread_id === eventThreadId)
         if (idx >= 0) {
           threadsList.value[idx] = {
@@ -757,6 +757,9 @@ const subscribeCompany = (companyId: number) => {
             last_at: raw?.message_create_date ?? threadsList.value[idx].last_at,
             hasNewMessage: isActiveScope && activeThreadId.value !== eventThreadId,
           }
+        } else if (isActiveScope && eventThreadId > 0) {
+          // Thread nuevo: recargar lista en background sin resetear el activo
+          fetchThreads()
         }
 
         // Mostrar toast cuando coincide company+channel activos
@@ -769,9 +772,9 @@ const subscribeCompany = (companyId: number) => {
           })
         }
 
-        // Si el thread está abierto, recargar mensajes desde BD para mostrar el nuevo
+        // Si el thread está abierto, recargar mensajes desde BD y hacer scroll al fondo
         if (isActiveScope && activeThreadId.value === eventThreadId && eventThreadId > 0) {
-          fetchMessages(eventThreadId).then(() => scrollToBottom())
+          fetchMessages(eventThreadId).then(() => nextTick(() => scrollToBottom()))
         }
     })
 }
