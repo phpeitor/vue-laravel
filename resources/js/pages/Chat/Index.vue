@@ -809,9 +809,9 @@ const subscribeCompany = (companyId: number) => {
           })
         }
 
-        // Si el thread está abierto, recargar mensajes desde BD y scroll inteligente
+        // Si el thread está abierto, recargar mensajes desde BD y forzar scroll al fondo
         if (isActiveScope && activeThreadId.value === eventThreadId && eventThreadId > 0) {
-          fetchMessages(eventThreadId).then(() => nextTick(() => handleNewMessageScroll()))
+          fetchMessages(eventThreadId).then(() => scrollToBottom())
         }
     })
 }
