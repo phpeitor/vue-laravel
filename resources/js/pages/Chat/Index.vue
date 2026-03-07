@@ -522,13 +522,7 @@ const fetchHistory = async (opts?: { append?: boolean }) => {
 const scrollerRef = ref<HTMLElement | null>(null)
 const hasUnreadBelow = ref(false)
 
-const getScrollEl = (): HTMLElement | null => {
-  // ScrollArea de shadcn renderiza un viewport interno; lo buscamos
-  const el = scrollerRef.value
-  if (!el) return null
-  const vp = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null
-  return vp ?? el
-}
+const getScrollEl = (): HTMLElement | null => scrollerRef.value
 
 const isNearBottom = (): boolean => {
   const el = getScrollEl()
@@ -1346,9 +1340,8 @@ const sendMessage = async () => {
 
           <!-- Messages -->
           <div class="flex-1 overflow-hidden relative">
-            <ScrollArea class="h-full" @scroll.passive="onScrollAreaScroll">
-              <div ref="scrollerRef" class="h-full overflow-auto p-4" @scroll.passive="onScrollAreaScroll">
-                <div class="space-y-3">
+            <div ref="scrollerRef" class="h-full overflow-y-auto p-4" @scroll.passive="onScrollAreaScroll">
+              <div class="space-y-3">
 
                   <div class="flex justify-center">
                     <Button
@@ -1390,9 +1383,8 @@ const sendMessage = async () => {
                   <div v-if="!activeMessages.length" class="text-sm text-muted-foreground">
                     Selecciona una conversación
                   </div>
-                </div>
               </div>
-            </ScrollArea>
+            </div>
 
             <!-- Botón flotante nuevo mensaje -->
             <Transition
