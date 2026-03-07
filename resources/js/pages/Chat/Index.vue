@@ -936,11 +936,13 @@ onBeforeUnmount(() => {
 ---------------------------- */
 const onEditorSubmit = async (html: string) => {
   if (draftDisabled.value) return
-  // mandamos el texto convertido DIRECTO (sin depender del computed, evita race)
   const msg = htmlToWhatsappText(html).trim()
   if (!msg) return
 
-  // reutiliza tu lógica: te recomiendo extraer a sendMessageWithText(msg)
+  // Limpiar editor antes del envío (tanto ref como DOM del contenteditable)
+  draftHtml.value = ''
+  draftEditorRef.value?.clear?.()
+
   await sendMessageWithText(msg)
 }
 
