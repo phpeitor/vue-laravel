@@ -511,11 +511,40 @@ const fetchHistory = async (opts?: { append?: boolean }) => {
    Scroll helpers
 ---------------------------- */
 const scrollerRef = ref<HTMLElement | null>(null)
+const hasUnreadBelow = ref(false)
+
+const getScrollEl = (): HTMLElement | null => {
+  // ScrollArea de shadcn renderiza un viewport interno; lo buscamos
+  const el = scrollerRef.value
+  if (!el) return null
+  const vp = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null
+  return vp ?? el
+}
+
+const isNearBottom = (): boolean => {
+  const el = getScrollEl()
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
 const scrollToBottom = async () => {
   await nextTick()
-  const el = scrollerRef.value
+  const el = getScrollEl()
   if (!el) return
   el.scrollTop = el.scrollHeight
+  hasUnreadBelow.value = false
+}
+
+const onScrollAreaScroll = () => {
+  if (isNearBottom()) hasUnreadBelow.value = false
+}
+
+const handleNewMessageScroll = () => {
+  if (isNearBottom()) {
+    scrollToBottom()
+  } else {
+    hasUnreadBelow.value = true
+  }
 }
 
 /* ---------------------------
@@ -772,9 +801,9 @@ const subscribeCompany = (companyId: number) => {
           })
         }
 
-        // Si el thread está abierto, recargar mensajes desde BD y hacer scroll al fondo
+        // Si el thread está abierto, recargar mensajes desde BD y scroll inteligente
         if (isActiveScope && activeThreadId.value === eventThreadId && eventThreadId > 0) {
-          fetchMessages(eventThreadId).then(() => nextTick(() => scrollToBottom()))
+          fetchMessages(eventThreadId).then(() => nextTick(() => handleNewMessageScroll()))
         }
     })
 }
@@ -1308,9 +1337,9 @@ const sendMessage = async () => {
           <Separator />
 
           <!-- Messages -->
-          <div class="flex-1 overflow-hidden">
-            <ScrollArea class="h-full">
-              <div ref="scrollerRef" class="h-full overflow-auto p-4">
+          <div class="flex-1 overflow-hidden relative">
+            <ScrollArea class="h-full" @scroll.passive="onScrollAreaScroll">
+              <div ref="scrollerRef" class="h-full overflow-auto p-4" @scroll.passive="onScrollAreaScroll">
                 <div class="space-y-3">
 
                   <div class="flex justify-center">
@@ -1356,6 +1385,25 @@ const sendMessage = async () => {
                 </div>
               </div>
             </ScrollArea>
+
+            <!-- Botón flotante nuevo mensaje -->
+            <Transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 translate-y-2"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 translate-y-2"
+            >
+              <button
+                v-if="hasUnreadBelow"
+                type="button"
+                @click="scrollToBottom"
+                class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shadow-lg hover:bg-primary/90 transition-colors"
+              >
+                ▼ Nuevo mensaje
+              </button>
+            </Transition>
           </div>
 
           <Separator />
