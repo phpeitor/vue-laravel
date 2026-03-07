@@ -796,8 +796,13 @@ const subscribeCompany = (companyId: number) => {
         // Mostrar toast cuando coincide company+channel activos
         // (siempre, incluso si el thread está abierto, porque el mensaje externo no se guarda en BD)
         if (isActiveScope) {
+          const name = raw?.name?.trim() || null
+          const phone = raw?.phone ?? ''
+          const titleParts = name && name !== phone
+            ? `${name} · ${phone}`
+            : phone
           toast({
-            title: `📱 ${raw?.phone ?? ''}`,
+            title: `📱 ${titleParts}`,
             description: `💬 ${raw?.item_content ?? ''}`,
             variant: 'success',
           })
