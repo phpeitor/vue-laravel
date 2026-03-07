@@ -100,6 +100,78 @@ const formatPE = (utc: string | null) => {
   }).format(d)
 }
 
+/** Escapa caracteres especiales HTML para uso seguro en atributos y contenido */
+const escHtml = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+/**
+ * Formatea un mensaje de tipo "referral" (anuncio de Facebook/Meta).
+ * Muestra: badge de anuncio, imagen (si media_type=image), titular, cuerpo y URL de origen.
+ * @param json  Cadena JSON del item_content o el objeto ya parseado
+ */
+const formatReferral = (json: unknown): string => {
+  let data: Record<string, any>
+  try {
+    data = typeof json === 'string' ? JSON.parse(json) : (json as Record<string, any> ?? {})
+  } catch {
+    return escHtml(json)
+  }
+
+  const body      = String(data.body       ?? '').trim()
+  const headline  = String(data.headline   ?? '').trim()
+  const sourceUrl = String(data.source_url ?? '').trim()
+  const mediaType = String(data.media_type ?? '').toLowerCase()
+  const imageUrl  = String(data.image_url  ?? '').trim()
+
+  const parts: string[] = []
+
+  // Badge de anuncio
+  parts.push(
+    `<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;opacity:0.65;margin-bottom:8px;">` +
+    `<span style="background:rgba(0,0,0,.12);border-radius:4px;padding:1px 6px;font-weight:600;">📢 Anuncio</span>` +
+    `</div>`
+  )
+
+  // Imagen
+  if (mediaType === 'image' && imageUrl) {
+    parts.push(
+      `<img src="${escHtml(imageUrl)}" alt="${escHtml(headline || 'Anuncio')}" ` +
+      `style="border-radius:8px;max-width:100%;display:block;margin-bottom:8px;" ` +
+      `loading="lazy" onerror="this.style.display='none'" />`
+    )
+  }
+
+  // Titular
+  if (headline) {
+    parts.push(
+      `<div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escHtml(headline)}</div>`
+    )
+  }
+
+  // Cuerpo
+  if (body) {
+    parts.push(
+      `<div style="font-size:13px;line-height:1.45;">${escHtml(body)}</div>`
+    )
+  }
+
+  // URL de origen
+  if (sourceUrl) {
+    parts.push(
+      `<a href="${escHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" ` +
+      `style="font-size:11px;opacity:0.65;text-decoration:underline;display:block;margin-top:8px;` +
+      `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">${escHtml(sourceUrl)}</a>`
+    )
+  }
+
+  return `<div style="display:flex;flex-direction:column;">${parts.join('')}</div>`
+}
+
 export function useTextFormat() {
   return {
     normalizeSpaces,
@@ -107,5 +179,7 @@ export function useTextFormat() {
     toTitleCase,
     displayThreadName,
     formatPE,
+    escHtml,
+    formatReferral,
   }
 }
