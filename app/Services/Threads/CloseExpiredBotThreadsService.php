@@ -10,7 +10,7 @@ class CloseExpiredBotThreadsService
     {
         return DB::table('threads')
             ->where('thread_status', 'OPEN')
-            ->where('create_date', '<=', now()->subHours(24))
+            ->whereRaw("create_date <= NOW() - interval '24 hour'")
             ->update([
                 'thread_status' => 'CLOSED',
                 //'bot_duration' => 0,

@@ -331,7 +331,7 @@ class TemplateController extends Controller
 
         $response = Http::withOptions([
             'verify' => false,
-        ])->post(env('WHATSAPP_NEW_URL'), $payload);
+        ])->post(config('services.whatsapp.new_url'), $payload);
 
         $responseData = $response->json();
 
@@ -432,7 +432,7 @@ class TemplateController extends Controller
         try {  
             $response = Http::withOptions([
                 'verify' => false,
-            ])->post(env('WHATSAPP_SEND_URL'), $payload);
+            ])->post(config('services.whatsapp.send_url'), $payload);
 
             $responseData = $response->json();
             $hsmId = $responseData['hsmid'] ?? null;

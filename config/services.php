@@ -37,4 +37,9 @@ return [
     'chat' => [
         'thread_base_url' => env('CHAT_THREAD_BASE_URL'),
     ],
+    'whatsapp' => [
+        'new_url'  => env('WHATSAPP_NEW_URL'),
+        'send_url' => env('WHATSAPP_SEND_URL'),
+        'sync_url' => env('WHATSAPP_SYNC_URL'),
+    ],
 ];
