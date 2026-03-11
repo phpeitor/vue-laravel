@@ -42,7 +42,7 @@ class WhatsappHsmSender
             $payload['recipientData']['templateHeader'] = $templateHeader;
         }
 
-        $url = env('WHATSAPP_SEND_URL');
+        $url = config('services.whatsapp.send_url');
 
         Log::info('WhatsApp HSM SEND - Request', [
             'recipient_id' => $recipient->id,
