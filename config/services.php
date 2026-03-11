@@ -32,7 +32,7 @@ return [
         ],
     ],
     'hsm' => [
-        'base_url' => env('HSM_STATUS_BASE_URL', 'http://127.0.0.1:4502'),
+        'base_url' => env('HSM_STATUS_BASE_URL', 'http://10.200.153.101:4502'),
     ],
     'chat' => [
         'thread_base_url' => env('CHAT_THREAD_BASE_URL'),
