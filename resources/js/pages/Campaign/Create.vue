@@ -537,7 +537,7 @@ const canUploadFile = computed(() => {
                         <!-- BODY -->
                         <div
                           v-if="body"
-                          class="mb-2 whitespace-pre-wrap"
+                          class="mb-2"
                           v-html="formatWhatsappText(body.text)"
                         ></div>
 
