@@ -27,7 +27,7 @@ class SendCampaignRecipient implements ShouldQueue
     {
         $recipient = CampaignRecipient::find($this->recipientId);
 
-        if (! $recipient || $recipient->status !== 'PENDING') {
+        if (! $recipient || ! in_array($recipient->status, ['PENDING', 'SENDING'])) {
             return;
         }
 

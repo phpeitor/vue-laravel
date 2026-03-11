@@ -515,6 +515,11 @@ const goToRecipientsPage = (url: string | null) => {
 
                       <CardContent class="pt-0 space-y-3">
                         <p class="text-sm">{{ l.message }}</p>
+                        <!-- ERROR detail -->
+                        <p
+                          v-if="(l.type ?? '').toUpperCase() === 'FAILED' && logMeta(l)?.error"
+                          class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded px-3 py-2 font-mono break-all"
+                        >{{ logMeta(l).error }}</p>
                         <!-- UPLOAD -->
                         <div
                           v-if="(l.type ?? '').toUpperCase() === 'UPLOAD' && uploadDownload(l)"
