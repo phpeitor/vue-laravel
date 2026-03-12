@@ -56,6 +56,7 @@ class ChatReplyController extends Controller
         if (!$res->successful()) {
             Log::error('Omnichannel reply no successful', [
                 'url' => $url,
+                'payload_sent' => $data,
                 'status' => $res->status(),
                 'body' => $res->body(),
             ]);

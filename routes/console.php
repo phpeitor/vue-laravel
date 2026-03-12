@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('threads:close-expired-bot')
     ->everyMinute()
     ->withoutOverlapping();
+
+Schedule::command('threads:assign-holding')
+    ->everyMinute()
+    ->withoutOverlapping();
