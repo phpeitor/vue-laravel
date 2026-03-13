@@ -52,14 +52,29 @@ class User extends Authenticatable
 
     public function scopeSearch(Builder $query, Request $request)
     {
-        return $query->where(function ($query) use ($request) {
-            return $query->when($request->search, function ($query) use ($request) {
-                return $query->where(function ($query) use ($request) {
-                    $query->where('name', 'like', '%' . $request->search . '%')
-                        ->orWhere('username', 'like', '%' . $request->search . '%')
-                        ->orWhere('email', 'like', '%' . $request->search . '%');
-                });
+        $term = trim((string) $request->search);
+
+        if ($term === '') {
+            return $query;
+        }
+
+        $normalized = mb_strtolower($term, 'UTF-8');
+
+        if ($normalized === 'online') {
+            $onlineThreshold = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+
+            return $query->whereExists(function ($sub) use ($onlineThreshold) {
+                $sub->selectRaw('1')
+                    ->from('sessions as s')
+                    ->whereColumn('s.user_id', 'users_laravel.id')
+                    ->where('s.last_activity', '>=', $onlineThreshold);
             });
+        }
+
+        return $query->where(function ($w) use ($term) {
+            $w->where('name', 'like', '%' . $term . '%')
+                ->orWhere('username', 'like', '%' . $term . '%')
+                ->orWhere('email', 'like', '%' . $term . '%');
         });
     }
 
