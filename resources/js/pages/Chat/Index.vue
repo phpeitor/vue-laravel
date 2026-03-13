@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AgentThreadFilter from '@/components/chat/AgentThreadFilter.vue'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, usePage } from '@inertiajs/vue3'
 import { computed, watch, nextTick, onBeforeUnmount, ref, type Ref } from 'vue'
@@ -70,7 +71,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, User, Bot, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -123,6 +124,9 @@ const tz = getLocalTimeZone()
 const hasChannelAssignments =
   (page.props.has_channel_assignments ?? false) as boolean
 
+const isRestrictedRole = (page.props.is_restricted_role ?? false) as boolean
+const currentUserAgentId = (page.props.current_user_agent_id ?? null) as number | null
+
 const canUseFilters = computed(() => hasChannelAssignments)
 
 const buildDefaultDates = () => {
@@ -152,6 +156,7 @@ const serverDefaultChannelId = (page.props.default_channel_id ?? null) as number
 
 type ThreadStatusFilter = 'OPEN' | 'CLOSED' | 'ALL'
 type SearchBy = 'ALL' | 'PHONE' | 'SENDER_ID'
+type AgentFilterType = 'bot' | 'holding' | 'asignados' | 'all'
 
 const filters = ref({
   company_id: (serverDefaultCompanyId ?? '') as number | '',
@@ -160,6 +165,57 @@ const filters = ref({
   date_end: endStr,
   thread_status: 'OPEN' as ThreadStatusFilter,
   q_by: 'ALL' as SearchBy,
+})
+
+const agentFilterType = ref<AgentFilterType>(isRestrictedRole ? 'asignados' : 'all')
+const selectedAgentUser = ref<{ id: number; name: string } | null>(
+  isRestrictedRole && currentUserAgentId
+    ? { id: currentUserAgentId, name: (page.props.auth as any)?.user?.name ?? '' }
+    : null
+)
+const agentPickerOpen = ref(false)
+const agentPickerLoading = ref(false)
+const agentUsers = ref<{ id: number; name: string }[]>([])
+
+const openAgentPicker = async () => {
+  agentPickerOpen.value = true
+  agentPickerLoading.value = true
+  try {
+    const params: Record<string, string | number> = {
+      company_id: filters.value.company_id,
+      communication_channel_id: filters.value.communication_channel_id,
+    }
+
+    if (isPhoneSearchActive.value) {
+      params.phone = phoneSearchApplied.value
+    } else {
+      params.date_start = filters.value.date_start
+      params.date_end = filters.value.date_end
+      params.thread_status = filters.value.thread_status
+    }
+
+    const res = await axios.get('/chat/agents', { params })
+    agentUsers.value = res.data ?? []
+  } finally {
+    agentPickerLoading.value = false
+  }
+}
+
+const selectAgent = (user: { id: number; name: string }) => {
+  selectedAgentUser.value = user
+  agentFilterType.value = 'asignados'
+  agentPickerOpen.value = false
+}
+
+const selectAllAssignedAgents = () => {
+  selectedAgentUser.value = null
+  agentFilterType.value = 'asignados'
+  agentPickerOpen.value = false
+}
+
+const selectedAgentLabel = computed(() => {
+  if (agentFilterType.value !== 'asignados') return null
+  return selectedAgentUser.value?.name ?? 'Todos los asignados'
 })
 
 const formattedRange = computed(() => {
@@ -707,6 +763,17 @@ const fetchThreads = async (opts?: { append?: boolean }) => {
       })
     }
 
+    const agentFilter = getAssignedAgentIdFilter()
+    if (agentFilter) {
+      if (agentFilter.exact !== undefined) {
+        params.assigned_agent_id_min = agentFilter.exact
+        params.assigned_agent_id_max = agentFilter.exact
+      } else {
+        if (agentFilter.min !== undefined) params.assigned_agent_id_min = agentFilter.min
+        if (agentFilter.max !== undefined) params.assigned_agent_id_max = agentFilter.max
+      }
+    }
+
     if (opts?.append && threadsNextCursor.value) params.cursor = threadsNextCursor.value
 
     const res = await axios.get('/chat/threads', { params })
@@ -722,6 +789,20 @@ const fetchThreads = async (opts?: { append?: boolean }) => {
     }
   } finally {
     loadingThreads.value = false
+  }
+}
+
+const getAssignedAgentIdFilter = (): { exact?: number; min?: number; max?: number } | null => {
+  switch (agentFilterType.value) {
+    case 'bot':
+      return { min: 1, max: 1 }
+    case 'holding':
+      return { min: 2, max: 2 }
+    case 'asignados':
+      return selectedAgentUser.value ? { exact: selectedAgentUser.value.id } : { min: 3 }
+    case 'all':
+    default:
+      return null
   }
 }
 
@@ -912,7 +993,7 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [filters.value.company_id, filters.value.communication_channel_id, filters.value.date_start, filters.value.date_end],
+  () => [filters.value.company_id, filters.value.communication_channel_id, filters.value.date_start, filters.value.date_end, agentFilterType.value, selectedAgentUser.value?.id],
   async () => {
     if (!canFetch.value) return
     if (filtersOpen.value) return // ✅ clave: NO buscar mientras editas en el modal
@@ -1033,7 +1114,20 @@ const sendMessage = async () => {
   <Head title="Chat" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
+
+      <div class="grid grid-cols-1 gap-3" :class="isRestrictedRole ? 'lg:grid-cols-[360px_1fr]' : 'lg:grid-cols-[64px_360px_1fr]'">
+        <!-- Filter rail (solo para roles no restringidos) -->
+        <div v-if="!isRestrictedRole" class="hidden lg:flex flex-col items-center gap-2 pt-4">
+          <AgentThreadFilter
+            v-model="agentFilterType"
+            :selected-agent-name="selectedAgentLabel"
+            @open-user-picker="openAgentPicker"
+          />
+        </div>
+
+
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[400px_1fr]">
+
         <!-- Sidebar -->
         <Card class="h-[78vh] flex flex-col overflow-hidden">
           <CardHeader class="pb-3">
@@ -1724,6 +1818,62 @@ const sendMessage = async () => {
           <Button type="button" :disabled="!phoneSearchDraft.trim()" @click="applyPhoneSearch">
             Buscar
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Agent User Picker Modal -->
+    <Dialog v-model:open="agentPickerOpen">
+      <DialogContent class="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Seleccionar agente</DialogTitle>
+          <DialogDescription>
+            Filtra los threads por el agente asignado.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div v-if="agentPickerLoading" class="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          Cargando agentes...
+        </div>
+
+        <div v-else class="flex flex-col gap-1 max-h-80 overflow-y-auto py-1">
+          <button
+            type="button"
+            class="flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-muted transition-colors"
+            :class="agentFilterType === 'asignados' && !selectedAgentUser ? 'bg-muted font-semibold' : ''"
+            @click="selectAllAssignedAgents"
+          >
+            <Avatar class="h-8 w-8 flex-shrink-0">
+              <AvatarFallback class="text-xs">
+                TA
+              </AvatarFallback>
+            </Avatar>
+            <span class="truncate text-sm">Todos los asignados</span>
+          </button>
+
+          <button
+            v-for="user in agentUsers"
+            :key="user.id"
+            type="button"
+            class="flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-muted transition-colors"
+            :class="selectedAgentUser?.id === user.id ? 'bg-muted font-semibold' : ''"
+            @click="selectAgent(user)"
+          >
+            <Avatar class="h-8 w-8 flex-shrink-0">
+              <AvatarFallback class="text-xs">
+                {{ user.name.split(' ').slice(0, 2).map((x: string) => x[0]).join('').toUpperCase() }}
+              </AvatarFallback>
+            </Avatar>
+            <span class="truncate text-sm">{{ user.name }}</span>
+          </button>
+          <div v-if="!agentUsers.length" class="text-sm text-muted-foreground py-2 px-3">
+            No hay agentes disponibles.
+          </div>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="ghost" @click="agentPickerOpen = false">Cancelar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

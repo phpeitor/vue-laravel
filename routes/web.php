@@ -77,6 +77,7 @@ Route::middleware(['auth', 'permission:chat'])->group(function () {
 });
 
 Route::get('/chat/tipificaciones', [ChatController::class, 'tipificaciones']);
+Route::middleware(['auth'])->get('/chat/agents', [ChatController::class, 'agents']);
 Route::middleware(['auth'])->patch('/chat/threads/{thread}/close', [ChatController::class, 'closeThread']);
 
 Route::middleware(['auth'])->group(function () {
