@@ -54,12 +54,17 @@ class ChatController extends Controller
 
         $hasAssignments = $assignments->isNotEmpty();
 
+        $authUser = $request->user();
+        $isRestrictedRole = $authUser->hasAnyRole(['user', 'asesor']);
+
         return Inertia::render('Chat/Index', [
             'companies' => $companies,
             'allowed_channels_by_company' => $allowedChannelsByCompany,
             'default_company_id' => $defaultCompanyId,
             'default_channel_id' => $defaultChannelId,
             'has_channel_assignments' => $hasAssignments,
+            'current_user_agent_id' => (int) $authUser->id,
+            'is_restricted_role' => $isRestrictedRole,
         ]);
     }
 
@@ -98,6 +103,8 @@ class ChatController extends Controller
             'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
             'cursor' => ['nullable', 'integer'],
             'phone' => ['nullable', 'string'], // ✅ búsqueda global por teléfono/sender_id
+            'assigned_agent_id_min' => ['nullable', 'integer', 'min:1'],
+            'assigned_agent_id_max' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $companyId = (int) $data['company_id'];
@@ -110,6 +117,16 @@ class ChatController extends Controller
         $status    = strtoupper(trim($data['thread_status'] ?? '')); // '', OPEN, CLOSED, ALL
         $limit     = (int) ($data['limit'] ?? 60);
         $cursor    = isset($data['cursor']) ? (int) $data['cursor'] : null;
+        $assignedAgentIdMin = isset($data['assigned_agent_id_min']) ? (int) $data['assigned_agent_id_min'] : null;
+        $assignedAgentIdMax = isset($data['assigned_agent_id_max']) ? (int) $data['assigned_agent_id_max'] : null;
+
+        // ✅ Roles restringidos: solo ven sus propios threads
+        $authUser = $request->user();
+        $isRestricted = $authUser->hasAnyRole(['user', 'asesor']);
+        if ($isRestricted) {
+            $assignedAgentIdMin = $authUser->id;
+            $assignedAgentIdMax = $authUser->id;
+        }
 
         // ✅ NUEVO: si viene phone => buscar global (ignorando fecha/status/q)
         $phone = trim($data['phone'] ?? '');
@@ -202,6 +219,15 @@ class ChatController extends Controller
                     });
                 });
             }
+        }
+
+        // ✅ FILTRO: assigned_agent_id (bot, holding, asignados)
+        if ($assignedAgentIdMin !== null && $assignedAgentIdMax !== null) {
+            // Rango específico: BETWEEN
+            $base->whereBetween('a.assigned_agent_id', [$assignedAgentIdMin, $assignedAgentIdMax]);
+        } elseif ($assignedAgentIdMin !== null) {
+            // Solo mínimo: >=
+            $base->where('a.assigned_agent_id', '>=', $assignedAgentIdMin);
         }
 
         // 7) Subquery: last message + customer + row_number (dedupe)
@@ -390,6 +416,96 @@ class ChatController extends Controller
             'thread_id' => $thread->id,
             'thread_status' => 'CLOSED',
         ]);
+    }
+
+    public function agents(Request $request)
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        $data = $request->validate([
+            'company_id'               => ['nullable', 'integer'],
+            'communication_channel_id' => ['nullable', 'integer'],
+            'date_start'               => ['nullable', 'date'],
+            'date_end'                 => ['nullable', 'date'],
+            'thread_status'            => ['nullable', 'in:ALL,OPEN,CLOSED'],
+            'phone'                    => ['nullable', 'string'],
+        ]);
+
+        $companyId = isset($data['company_id']) ? (int) $data['company_id'] : null;
+        $channelId = isset($data['communication_channel_id']) ? (int) $data['communication_channel_id'] : null;
+
+        if ($companyId && $channelId) {
+            $this->assertCompanyChannelAccess($request, $companyId, $channelId);
+        }
+
+        $dateStart = isset($data['date_start']) ? Carbon::parse($data['date_start'])->startOfDay() : null;
+        $dateEnd = isset($data['date_end']) ? Carbon::parse($data['date_end'])->endOfDay() : null;
+        $status = strtoupper(trim($data['thread_status'] ?? ''));
+        $phone = trim($data['phone'] ?? '');
+
+        $threadIds = DB::table('threads as a');
+
+        if ($companyId) {
+            $threadIds->where('a.company_id', $companyId);
+        }
+
+        if ($channelId) {
+            $threadIds->where('a.communication_channel_id', $channelId);
+        }
+
+        if ($phone !== '') {
+            $threadIds->where(function ($w) use ($phone) {
+                $w->where('a.sender_id', 'ilike', "%{$phone}%")
+                    ->orWhereExists(function ($sub) use ($phone) {
+                        $sub->select(DB::raw(1))
+                            ->from('messages as bq')
+                            ->leftJoin('customers as cq', 'cq.id', '=', 'bq.customer_id')
+                            ->whereColumn('bq.thread_id', 'a.id')
+                            ->where('cq.phone', 'ilike', "%{$phone}%");
+                    });
+            });
+        } else {
+            $hasDates = ($dateStart && $dateEnd);
+
+            if ($hasDates) {
+                if ($status === 'OPEN') {
+                    $threadIds->where('a.thread_status', 'OPEN');
+                } elseif ($status === 'CLOSED') {
+                    $threadIds->where('a.thread_status', 'CLOSED')
+                        ->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+                            $sub->select(DB::raw(1))
+                                ->from('messages as b')
+                                ->whereColumn('b.thread_id', 'a.id')
+                                ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
+                        });
+                } else {
+                    $threadIds->where(function ($w) use ($dateStart, $dateEnd) {
+                        $w->whereExists(function ($sub) use ($dateStart, $dateEnd) {
+                            $sub->select(DB::raw(1))
+                                ->from('messages as b')
+                                ->whereColumn('b.thread_id', 'a.id')
+                                ->whereBetween('b.create_date', [$dateStart, $dateEnd]);
+                        })->orWhere('a.thread_status', 'OPEN');
+                    });
+                }
+            } else {
+                if ($status === 'CLOSED') {
+                    $threadIds->where('a.thread_status', 'CLOSED');
+                } elseif ($status !== 'ALL') {
+                    $threadIds->where('a.thread_status', 'OPEN');
+                }
+            }
+        }
+
+        $users = DB::table('users_laravel as u')
+            ->joinSub($threadIds->select('a.assigned_agent_id')->distinct(), 'filtered_threads', function ($join) {
+                $join->on('filtered_threads.assigned_agent_id', '=', 'u.id');
+            })
+            ->where('u.id', '>', 2)
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return response()->json($users);
     }
 
     public function tipificaciones(Request $request)

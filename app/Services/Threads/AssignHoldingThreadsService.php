@@ -14,10 +14,16 @@ class AssignHoldingThreadsService
 
         DB::transaction(function () use (&$assignedCount, &$processedCount, &$details) {
             $threads = DB::table('threads')
-                ->select('id', 'company_id', 'communication_channel_id', 'assigned_agent_id', 'create_date')
+                ->select(
+                    'id',
+                    'company_id',
+                    'communication_channel_id',
+                    'assigned_agent_id',
+                    'create_date',
+                    'room'
+                )
                 ->where('thread_status', 'OPEN')
                 ->where('assigned_agent_id', 2)
-                ->whereRaw('COALESCE(room, 0) = 0')
                 ->orderBy('create_date', 'asc')
                 ->lockForUpdate()
                 ->get();
@@ -25,37 +31,47 @@ class AssignHoldingThreadsService
             foreach ($threads as $thread) {
                 $processedCount++;
 
-                $selectedAgent = DB::table('user_communication_channels as ucc')
+                $candidateQuery = DB::table('room as r')
+                    ->join('user_room as ur', 'ur.room_id', '=', 'r.id')
                     ->joinSub(
                         DB::table('sessions')
                             ->select('user_id')
                             ->distinct(),
                         'online_users',
                         function ($join) {
-                            $join->on('online_users.user_id', '=', 'ucc.user_id');
+                            $join->on('online_users.user_id', '=', 'ur.user_id');
                         }
                     )
                     ->leftJoin('threads as t', function ($join) {
-                        $join->on('t.assigned_agent_id', '=', 'ucc.user_id')
+                        $join->on('t.assigned_agent_id', '=', 'ur.user_id')
                             ->where('t.thread_status', '=', 'OPEN');
                     })
-                    ->where('ucc.company_id', $thread->company_id)
-                    ->where('ucc.communication_channel_id', $thread->communication_channel_id)
-                    ->whereNotIn('ucc.user_id', [1, 2])
-                    ->groupBy('ucc.user_id')
+                    ->where('r.company_id', $thread->company_id)
+                    ->where('r.communication_channel_id', $thread->communication_channel_id)
+                    ->whereNotIn('ur.user_id', [1, 2]);
+
+                if ((int) $thread->room > 0) {
+                    $candidateQuery->where('r.id', $thread->room);
+                }
+
+                $selectedAgent = $candidateQuery
+                    ->groupBy('ur.user_id', 'r.id', 'r.nombre')
                     ->select(
-                        'ucc.user_id',
+                        'ur.user_id',
+                        'r.id as room_id',
+                        'r.nombre as room_name',
                         DB::raw('COUNT(t.id) as open_threads_count')
                     )
                     ->orderBy('open_threads_count', 'asc')
-                    ->orderBy('ucc.user_id', 'asc')
+                    ->orderBy('ur.user_id', 'asc')
                     ->first();
 
                 if (! $selectedAgent) {
                     $details[] = [
                         'thread_id' => $thread->id,
+                        'thread_room' => $thread->room,
                         'assigned_to' => null,
-                        'reason' => 'No hay agentes en línea para company/channel',
+                        'reason' => 'No hay usuarios online para el room/company/channel',
                     ];
                     continue;
                 }
@@ -70,7 +86,10 @@ class AssignHoldingThreadsService
 
                 $details[] = [
                     'thread_id' => $thread->id,
+                    'thread_room' => $thread->room,
                     'assigned_to' => $selectedAgent->user_id,
+                    'room_id' => $selectedAgent->room_id,
+                    'room_name' => $selectedAgent->room_name,
                     'open_threads_count' => $selectedAgent->open_threads_count,
                 ];
             }
