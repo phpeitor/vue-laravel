@@ -40,6 +40,10 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:add user')
         ->name('users.create');
 
+    Route::get('/users/lookup-dni', [UserController::class, 'lookupDni'])
+        ->middleware('permission:add user')
+        ->name('users.lookup-dni');
+
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])
         ->middleware('permission:edit user')
         ->name('users.edit');

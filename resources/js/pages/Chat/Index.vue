@@ -1864,7 +1864,7 @@ const sendMessage = async () => {
             <span class="truncate text-sm">{{ user.name }}</span>
           </button>
           <div v-if="!agentUsers.length" class="text-sm text-muted-foreground py-2 px-3">
-            No hay agentes disponibles.
+            No hay chats disponibles
           </div>
         </div>
 
