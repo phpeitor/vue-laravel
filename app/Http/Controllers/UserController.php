@@ -39,7 +39,19 @@ class UserController extends Controller
             ? 'desc'
             : 'asc';
 
+        $onlineThreshold = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+
         $userQuery = User::search($request)
+            ->select('users_laravel.*')
+            ->selectRaw(
+                'CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM sessions s
+                    WHERE s.user_id = users_laravel.id
+                      AND s.last_activity >= ?
+                ) THEN 1 ELSE 0 END as is_online',
+                [$onlineThreshold]
+            )
             ->orderBy($sort, $direction);
 
         return inertia('User/Index', [
@@ -89,7 +101,15 @@ class UserController extends Controller
             abort(403, 'User does not have the right permissions');
         }
 
-        $user = User::create($request->validated());
+        $validated = $request->validated();
+
+        $user = User::create([
+            'name' => $validated['name'],
+            'username' => $validated['username'],
+            'email' => $validated['email'],
+            'password' => $validated['password'],
+            'estado' => 1,
+        ]);
         $user->assignRole($request->role); 
         $selectedIds = $request->input('channels', []);
 

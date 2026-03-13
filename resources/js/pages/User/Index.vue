@@ -3,10 +3,16 @@ import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
 import Pagination from "@/components/Pagination.vue";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/vue3";
-import { onMounted, ref, watch, computed } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch, computed } from "vue";
 import useAuth from "@/composables/useAuth";
 import { SquarePlus, Edit, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import {
   AlertDialog,
@@ -34,31 +40,42 @@ const page = usePage() as any
 const { toast } = useToast()
 
 onMounted(() => {
+  deleteDialogOpen.value = false
+  deletingUserId.value = null
+
   const msg = page.props.flash?.success
   if (msg) {
     toast({ title: msg, variant: 'success' })
   }
 });
 
-const pageNumber = ref<number>(1)
+const pageNumber = ref<number>((page.props.users as any)?.meta?.current_page ?? 1)
 const searchTerm = ref<string>(page.props.search ?? "")
-const sortDirection = ref('asc')
+const debouncedSearchTerm = ref<string>(String(page.props.search ?? ""))
+const sortDirection = ref<string>(String(page.props.direction ?? 'asc'))
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 type PaginationLink = { url?: string | null } | null
 
 const pageNumberUpdated = (link: PaginationLink) => {
   const urlStr = typeof link === 'object' ? link?.url ?? '' : ''
-  const parts = urlStr.split("=")
-  const v = parts[1] ?? '1'
-  pageNumber.value = Number(v) || 1
+  if (!urlStr) return
+
+  try {
+    const parsed = new URL(urlStr, window.location.origin)
+    const pageValue = parsed.searchParams.get('page')
+    pageNumber.value = Number(pageValue ?? '1') || 1
+  } catch {
+    pageNumber.value = 1
+  }
 };
 
 const usersUrl = computed(() => {
     const url = new URL(route("users.index"));
     url.searchParams.set("page", String(pageNumber.value));
 
-    if (searchTerm.value) {
-      url.searchParams.set("search", String(searchTerm.value));
+    if (debouncedSearchTerm.value) {
+      url.searchParams.set("search", String(debouncedSearchTerm.value));
     }
 
     url.searchParams.set("sort", "id");
@@ -74,9 +91,13 @@ const toggleSort = () => {
 watch(
     () => usersUrl.value,
     (newValue) => {
+    // Evita que el overlay del AlertDialog quede "pegado" entre navegaciones.
+    deleteDialogOpen.value = false
+    deletingUserId.value = null
+
         router.visit(newValue, {
             replace: true,
-            preserveState: true,
+      preserveState: false,
             preserveScroll: true,
         });
     }
@@ -85,11 +106,22 @@ watch(
 watch(
     () => searchTerm.value,
     (value) => {
-        if (value) {
-            pageNumber.value = 1;
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer)
         }
+
+        searchDebounceTimer = setTimeout(() => {
+          debouncedSearchTerm.value = value.trim()
+          pageNumber.value = 1
+        }, 350)
     }
 );
+
+onBeforeUnmount(() => {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+})
 
 const deleteForm = useForm({});
 const deleteDialogOpen = ref(false)
@@ -118,21 +150,27 @@ const confirmDelete = async () => {
 <template>
   <Head title="Users" />
   <AppLayout :breadcrumbs="breadcrumbs">
-    <div class="bg-background text-foreground py-10 transition-colors duration-300">
+    <TooltipProvider :delay-duration="100">
+      <div class="bg-background text-foreground py-10 transition-colors duration-300">
       <div class="mx-auto max-w-7xl">
         <div class="px-4 sm:px-6 lg:px-8">
           <div class="sm:flex sm:items-center sm:justify-between gap-4">
             <div class="flex items-center gap-3">
               <h1 class="text-2xl font-semibold text-foreground">Usuarios</h1>
 
-              <Link
-                v-if="hasPermission('add user')"
-                :href="route('users.create')"
-                class="inline-flex items-center justify-center rounded-md bg-indigo-600 p-2 text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                title="Registrar usuario"
-              >
-                <SquarePlus class="w-5 h-5" />
-              </Link>
+              <Tooltip v-if="hasPermission('add user')">
+                <TooltipTrigger as-child>
+                  <Link
+                    :href="route('users.create')"
+                    class="inline-flex items-center justify-center rounded-md bg-indigo-600 p-2 text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <SquarePlus class="w-5 h-5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Registrar</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             <div class="flex items-center gap-4">
@@ -183,10 +221,27 @@ const confirmDelete = async () => {
                           {{ user.id }}
                         </td>
                         <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-foreground sm:pl-6">
-                          {{ user.name }}
+                          <div class="flex items-center gap-2">
+                            <span
+                              v-if="user.is_online"
+                              class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"
+                              aria-label="Conectado"
+                              title="Conectado"
+                            />
+                            <span>{{ user.name }}</span>
+                          </div>
                         </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm text-muted-foreground">{{ user.email }}</td>
-                        <td class="px-3 py-4 text-sm text-muted-foreground max-w-xs truncate" :title="user.password">{{ user.password.slice(-8) }}***</td>
+                        <td class="px-3 py-4 text-sm text-muted-foreground max-w-xs truncate">
+                          <Tooltip>
+                            <TooltipTrigger as-child>
+                              <span class="inline-block max-w-xs truncate cursor-help align-middle">{{ user.password.slice(-8) }}***</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p class="max-w-xs break-all">{{ user.password }}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm">
                           <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -202,20 +257,33 @@ const confirmDelete = async () => {
                         </td>
                         <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <div class="flex items-center justify-end gap-2">
-                            <Button v-if="hasPermission('edit user')" variant="ghost" size="sm" as-child>
-                              <Link :href="route('users.edit', user.id)" class="p-2">
-                                <Edit class="w-4 h-4 text-muted-foreground" />
-                              </Link>
-                            </Button>
+                            <Tooltip v-if="hasPermission('edit user')">
+                              <TooltipTrigger as-child>
+                                <Button variant="ghost" size="sm" as-child>
+                                  <Link :href="route('users.edit', user.id)" class="p-2">
+                                    <Edit class="w-4 h-4 text-muted-foreground" />
+                                  </Link>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Editar</p>
+                              </TooltipContent>
+                            </Tooltip>
 
-                            <Button
-                              v-if="user.estado == 1 && hasPermission('delete user')"
-                              variant="ghost"
-                              size="sm"
-                              @click="openDeleteDialog(user.id)"
-                            >
-                              <Trash2 class="w-4 h-4 text-destructive" />
-                            </Button>
+                            <Tooltip v-if="user.estado == 1 && hasPermission('delete user')">
+                              <TooltipTrigger as-child>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  @click="openDeleteDialog(user.id)"
+                                >
+                                  <Trash2 class="w-4 h-4 text-destructive" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Eliminar</p>
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </td>
                       </tr>
@@ -249,6 +317,7 @@ const confirmDelete = async () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   </AppLayout>
 </template>

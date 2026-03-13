@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\DB;
 
 class AssignHoldingThreadsService
 {
+    private const MAX_OPEN_THREADS_PER_AGENT = 3;
+
     public function execute(): array
     {
         $assignedCount = 0;
@@ -56,6 +58,7 @@ class AssignHoldingThreadsService
 
                 $selectedAgent = $candidateQuery
                     ->groupBy('ur.user_id', 'r.id', 'r.nombre')
+                    ->havingRaw('COUNT(t.id) < ?', [self::MAX_OPEN_THREADS_PER_AGENT])
                     ->select(
                         'ur.user_id',
                         'r.id as room_id',
@@ -71,7 +74,7 @@ class AssignHoldingThreadsService
                         'thread_id' => $thread->id,
                         'thread_room' => $thread->room,
                         'assigned_to' => null,
-                        'reason' => 'No hay usuarios online para el room/company/channel',
+                        'reason' => 'No hay usuarios online disponibles o todos alcanzaron el limite de threads OPEN',
                     ];
                     continue;
                 }
