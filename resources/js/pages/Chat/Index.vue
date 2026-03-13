@@ -1114,7 +1114,16 @@ const sendMessage = async () => {
   <Head title="Chat" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
-      <div class="grid grid-cols-1 gap-3" :class="isRestrictedRole ? 'lg:grid-cols-[360px_1fr]' : 'lg:grid-cols-[360px_44px_1fr]'">
+      <div class="grid grid-cols-1 gap-3" :class="isRestrictedRole ? 'lg:grid-cols-[360px_1fr]' : 'lg:grid-cols-[64px_360px_1fr]'">
+        <!-- Filter rail (solo para roles no restringidos) -->
+        <div v-if="!isRestrictedRole" class="hidden lg:flex flex-col items-center gap-2 pt-4">
+          <AgentThreadFilter
+            v-model="agentFilterType"
+            :selected-agent-name="selectedAgentLabel"
+            @open-user-picker="openAgentPicker"
+          />
+        </div>
+
         <!-- Sidebar -->
         <Card class="h-[78vh] flex flex-col overflow-hidden">
           <CardHeader class="pb-3">
@@ -1362,15 +1371,6 @@ const sendMessage = async () => {
             </ScrollArea>
           </CardContent>
         </Card>
-
-        <!-- Filter rail (solo para roles no restringidos) -->
-        <div v-if="!isRestrictedRole" class="hidden lg:flex flex-col items-center gap-2 pt-4">
-          <AgentThreadFilter
-            v-model="agentFilterType"
-            :selected-agent-name="selectedAgentLabel"
-            @open-user-picker="openAgentPicker"
-          />
-        </div>
 
         <!-- Chat panel -->
         <Card class="h-[78vh] flex flex-col">

@@ -45,16 +45,16 @@ const items: Array<{ value: AgentFilterType; label: string; icon: any }> = [
 
 <template>
   <TooltipProvider :delay-duration="0">
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-3">
       <Tooltip v-for="item in items" :key="item.value">
         <TooltipTrigger as-child>
           <Button
             :variant="modelValue === item.value ? 'default' : 'outline'"
             size="icon"
-            class="h-9 w-9"
+            class="h-12 w-12 rounded-2xl shadow-sm"
             @click="handleClick(item.value)"
           >
-            <component :is="item.icon" class="h-4 w-4" />
+            <component :is="item.icon" class="h-5 w-5" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="right">
