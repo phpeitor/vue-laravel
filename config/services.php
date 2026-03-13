@@ -42,4 +42,7 @@ return [
         'send_url' => env('WHATSAPP_SEND_URL'),
         'sync_url' => env('WHATSAPP_SYNC_URL'),
     ],
+    'metadata' => [
+        'dni_lookup_url' => env('METADATA_DNI_LOOKUP_URL'),
+    ],
 ];

@@ -36,6 +36,13 @@ class StoreUserRequest extends FormRequest
                 Rule::exists('communication_channels', 'id')
                     ->where(fn ($q) => $q->where('status', 'ACTIVO')),
             ],
+
+            'room_assignments' => ['nullable', 'array'],
+            'room_assignments.*' => [
+                'nullable',
+                'integer',
+                Rule::exists('room', 'id')->where(fn ($q) => $q->where('estado', true)),
+            ],
         ];
     }
 
