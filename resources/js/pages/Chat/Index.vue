@@ -1114,6 +1114,7 @@ const sendMessage = async () => {
   <Head title="Chat" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
+
       <div class="grid grid-cols-1 gap-3" :class="isRestrictedRole ? 'lg:grid-cols-[360px_1fr]' : 'lg:grid-cols-[64px_360px_1fr]'">
         <!-- Filter rail (solo para roles no restringidos) -->
         <div v-if="!isRestrictedRole" class="hidden lg:flex flex-col items-center gap-2 pt-4">
@@ -1123,6 +1124,9 @@ const sendMessage = async () => {
             @open-user-picker="openAgentPicker"
           />
         </div>
+
+
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[400px_1fr]">
 
         <!-- Sidebar -->
         <Card class="h-[78vh] flex flex-col overflow-hidden">
@@ -1321,7 +1325,7 @@ const sendMessage = async () => {
                               <span v-if="t.origin" class="inline-flex px-1 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded font-semibold">
                                 {{ getThreadOriginLabel(t.origin) }}
                               </span>
-                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
+                              <span v-if="t.thread_status === 'OPEN' && t.create_date"  class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
                                 ⏱ {{ getThreadElapsedTime(t) }}
                               </span>
                               <span
@@ -1333,7 +1337,7 @@ const sendMessage = async () => {
                               >
                                 ⏳ {{ getThreadRemainingTime(t) }}
                               </span>
-                            </div>
+                            </div>                            
                           </div>
                         </div>
 
