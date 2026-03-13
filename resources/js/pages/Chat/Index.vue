@@ -1125,9 +1125,6 @@ const sendMessage = async () => {
           />
         </div>
 
-
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[400px_1fr]">
-
         <!-- Sidebar -->
         <Card class="h-[78vh] flex flex-col overflow-hidden">
           <CardHeader class="pb-3">
