@@ -71,7 +71,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -80,6 +80,8 @@ import axios from 'axios'
 type ThreadSummary = {
   thread_id: number
   thread_status: string
+  assigned_agent_id: number | null
+  room: number | null
   sender_id: string | null // ✅
   name: string | null
   phone: string | null
@@ -395,6 +397,82 @@ type TipRow = {
 const closeOpen = ref(false)
 const closeLoading = ref(false)
 const closeThreadTargetId = ref<number | null>(null)
+
+const reassignOpen = ref(false)
+const reassignLoading = ref(false)
+const reassignSubmitting = ref(false)
+const reassignThreadId = ref<number | null>(null)
+const reassignCurrentUser = ref<{ id: number; username?: string | null; name?: string | null } | null>(null)
+const reassignCandidates = ref<Array<{ id: number; username?: string | null; name?: string | null }>>([])
+const reassignToUserId = ref<number | null>(null)
+
+const openReassignModal = async () => {
+  const thread = activeThread.value
+  if (!thread?.thread_id) return
+
+  reassignThreadId.value = thread.thread_id
+  reassignCurrentUser.value = null
+  reassignCandidates.value = []
+  reassignToUserId.value = null
+  reassignOpen.value = true
+  reassignLoading.value = true
+
+  try {
+    const res = await axios.get(`/chat/threads/${thread.thread_id}/reassignment-candidates`)
+    reassignCurrentUser.value = res.data?.current_user ?? null
+    reassignCandidates.value = res.data?.candidates ?? []
+  } catch (error: any) {
+    const msg = error?.response?.data?.message || 'No se pudieron cargar los usuarios para reasignar.'
+    toast({
+      title: 'Reasignacion no disponible',
+      description: msg,
+      variant: 'destructive',
+    })
+    reassignOpen.value = false
+  } finally {
+    reassignLoading.value = false
+  }
+}
+
+const confirmReassignThread = async () => {
+  if (!reassignThreadId.value || !reassignToUserId.value) return
+  if (reassignToUserId.value === reassignCurrentUser.value?.id) {
+    toast({
+      title: 'Seleccion invalida',
+      description: 'Debes elegir un usuario distinto al asignado actual.',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  reassignSubmitting.value = true
+  try {
+    await axios.patch(`/chat/threads/${reassignThreadId.value}/reassign`, {
+      new_assigned_agent_id: reassignToUserId.value,
+    })
+
+    const idx = threadsList.value.findIndex(t => t.thread_id === reassignThreadId.value)
+    if (idx >= 0) {
+      threadsList.value[idx].assigned_agent_id = reassignToUserId.value
+    }
+
+    reassignOpen.value = false
+    toast({
+      title: 'Reasignacion completada',
+      description: 'La conversacion fue reasignada correctamente.',
+    })
+    await fetchThreads()
+  } catch (error: any) {
+    const msg = error?.response?.data?.message || 'No se pudo reasignar la conversacion.'
+    toast({
+      title: 'Error al reasignar',
+      description: msg,
+      variant: 'destructive',
+    })
+  } finally {
+    reassignSubmitting.value = false
+  }
+}
 
 const tipRows = ref<TipRow[]>([])
 
@@ -1399,6 +1477,25 @@ const sendMessage = async () => {
                   <Tooltip>
                     <TooltipTrigger as-child>
                       <Button
+                        v-if="!isRestrictedRole && activeThread && (activeThread.thread_status === 'OPEN') && Number(activeThread.assigned_agent_id ?? 0) > 2"
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="h-8 w-8"
+                        @click="openReassignModal"
+                      >
+                        <UserRoundCog class="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reasignar conversación</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
                         v-if="activeThread && (activeThread.thread_status === 'OPEN')"
                         type="button"
                         variant="ghost"
@@ -1710,6 +1807,65 @@ const sendMessage = async () => {
           <Button type="button" variant="outline" @click="closeOpen = false">Cancelar</Button>
           <Button type="button" :disabled="!canConfirmClose || closingThreadId === closeThreadTargetId" @click="confirmCloseThread">
             Cerrar conversación
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="reassignOpen">
+      <DialogContent class="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Reasignar conversación</DialogTitle>
+          <DialogDescription>
+            Selecciona un usuario del mismo room para reasignar el thread.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div v-if="reassignLoading" class="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          Cargando usuarios...
+        </div>
+
+        <div v-else class="grid gap-3 py-1">
+          <div class="text-sm">
+            <span class="text-muted-foreground">Usuario actual: </span>
+            <span class="font-medium">
+              {{ reassignCurrentUser?.username || reassignCurrentUser?.name || '-' }}
+            </span>
+          </div>
+
+          <div class="grid gap-2 max-h-72 overflow-y-auto">
+            <button
+              v-for="u in reassignCandidates"
+              :key="u.id"
+              type="button"
+              class="flex items-center gap-3 rounded-lg border px-3 py-2 text-left hover:bg-muted transition-colors"
+              :class="[
+                reassignToUserId === u.id ? 'border-primary bg-muted' : 'border-border',
+                u.id === reassignCurrentUser?.id ? 'opacity-60 cursor-not-allowed' : '',
+              ]"
+              :disabled="u.id === reassignCurrentUser?.id"
+              @click="u.id !== reassignCurrentUser?.id ? (reassignToUserId = u.id) : null"
+            >
+              <Avatar class="h-8 w-8 flex-shrink-0">
+                <AvatarFallback class="text-xs">
+                  {{ (u.username || u.name || 'U').slice(0, 2).toUpperCase() }}
+                </AvatarFallback>
+              </Avatar>
+              <span class="truncate text-sm">{{ u.username || u.name }}</span>
+              <span v-if="u.id === reassignCurrentUser?.id" class="ml-auto text-[11px] text-muted-foreground">Actual</span>
+            </button>
+
+            <div v-if="!reassignCandidates.length" class="text-sm text-muted-foreground py-2">
+              No hay usuarios disponibles para reasignar.
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="outline" @click="reassignOpen = false">Cancelar</Button>
+          <Button type="button" :disabled="!reassignToUserId || reassignSubmitting" @click="confirmReassignThread">
+            Reasignar
           </Button>
         </DialogFooter>
       </DialogContent>

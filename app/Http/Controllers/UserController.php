@@ -150,6 +150,39 @@ class UserController extends Controller
         ]);
     }
 
+    public function roomsTimeline(User $user)
+    {
+        if (Gate::denies('viewAny', User::class)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $rows = DB::table('user_communication_channels as a')
+            ->leftJoin('companies as b', 'a.company_id', '=', 'b.id')
+            ->leftJoin('communication_channels as c', 'a.communication_channel_id', '=', 'c.id')
+            ->leftJoin('room as d', function ($join) {
+                $join->on('a.company_id', '=', 'd.company_id')
+                    ->on('a.communication_channel_id', '=', 'd.communication_channel_id');
+            })
+            ->leftJoin('user_room as e', function ($join) {
+                $join->on('e.room_id', '=', 'd.id')
+                    ->on('a.user_id', '=', 'e.user_id')
+                    ->where('e.estado', '=', true);
+            })
+            ->where('a.user_id', $user->id)
+            ->orderBy('b.company_name')
+            ->orderBy('c.channel_name')
+            ->orderBy('d.nombre')
+            ->selectRaw(" 
+                b.company_name,
+                c.channel_name,
+                d.nombre as room,
+                case when e.user_id is not null then 'SI' else 'NO' end as asignacion
+            ")
+            ->get();
+
+        return response()->json($rows);
+    }
+
     public function store(StoreUserRequest $request)
     {
         if (!auth()->user()->can('add user')) {
