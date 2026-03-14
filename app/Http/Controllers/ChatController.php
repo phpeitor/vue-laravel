@@ -12,6 +12,32 @@ use Illuminate\Support\Facades\Storage;
 
 class ChatController extends Controller
 {
+    protected function resolveThreadRoomId(Thread $thread): int
+    {
+        $threadRoomId = (int) ($thread->room ?? 0);
+        if ($threadRoomId > 0) {
+            return $threadRoomId;
+        }
+
+        $assignedAgentId = (int) ($thread->assigned_agent_id ?? 0);
+        if ($assignedAgentId <= 0) {
+            return 0;
+        }
+
+        $roomId = DB::table('user_room as ur')
+            ->join('room as r', function ($join) {
+                $join->on('r.id', '=', 'ur.room_id')
+                    ->where('r.estado', '=', true);
+            })
+            ->where('ur.user_id', $assignedAgentId)
+            ->where('ur.estado', true)
+            ->where('r.company_id', (int) $thread->company_id)
+            ->where('r.communication_channel_id', (int) $thread->communication_channel_id)
+            ->value('ur.room_id');
+
+        return (int) ($roomId ?? 0);
+    }
+
     
     public function index(Request $request)
     {
@@ -249,6 +275,8 @@ class ChatController extends Controller
             ->select([
                 'a.id as thread_id',
                 'a.thread_status',
+                'a.assigned_agent_id',
+                'a.room',
                 'a.sender_id',
                 'a.create_date',
                 'a.origin',
@@ -415,6 +443,127 @@ class ChatController extends Controller
             'message' => 'Conversación cerrada exitosamente',
             'thread_id' => $thread->id,
             'thread_status' => 'CLOSED',
+        ]);
+    }
+
+    public function reassignmentCandidates(Request $request, Thread $thread)
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        $this->assertCompanyChannelAccess($request, (int) $thread->company_id, (int) $thread->communication_channel_id);
+
+        $currentUser = DB::table('users_laravel')
+            ->where('id', (int) $thread->assigned_agent_id)
+            ->first(['id', 'username', 'name']);
+
+        $threadRoomId = (int) ($thread->room ?? 0);
+
+        $onlineThreshold = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+        $onlineUsers = DB::table('sessions')
+            ->select('user_id')
+            ->where('last_activity', '>=', $onlineThreshold)
+            ->distinct();
+
+        $candidatesQuery = DB::table('user_room as e')
+            ->join('room as d', function ($join) {
+                $join->on('e.room_id', '=', 'd.id')
+                    ->where('d.estado', '=', true);
+            })
+            ->joinSub($onlineUsers, 'f', function ($join) {
+                $join->on('f.user_id', '=', 'e.user_id');
+            })
+            ->join('users_laravel as g', 'g.id', '=', 'e.user_id')
+            ->where('e.estado', true)
+            ->where('d.company_id', (int) $thread->company_id)
+            ->where('d.communication_channel_id', (int) $thread->communication_channel_id)
+            ->where('e.user_id', '>', 2)
+            ->where('e.user_id', '!=', (int) $thread->assigned_agent_id);
+
+        if ($threadRoomId > 0) {
+            $candidatesQuery->where('d.id', $threadRoomId);
+        }
+
+        $candidates = $candidatesQuery
+            ->orderBy('g.username')
+            ->distinct()
+            ->get([
+                'g.id',
+                'g.username',
+                'g.name',
+            ]);
+
+        // Si no hay agentes conectados en el mismo room, devolvemos al actual
+        // para mantener contexto en UI (la reasignacion al mismo sigue bloqueada).
+        if ($candidates->isEmpty() && $currentUser) {
+            $candidates = collect([$currentUser]);
+        }
+
+        return response()->json([
+            'current_user' => $currentUser,
+            'candidates' => $candidates,
+        ]);
+    }
+
+    public function reassignThread(Request $request, Thread $thread)
+    {
+        $this->authorize('viewAny', Thread::class);
+
+        $this->assertCompanyChannelAccess($request, (int) $thread->company_id, (int) $thread->communication_channel_id);
+
+        $data = $request->validate([
+            'new_assigned_agent_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $newAgentId = (int) $data['new_assigned_agent_id'];
+        $currentAgentId = (int) $thread->assigned_agent_id;
+
+        if ($newAgentId === $currentAgentId) {
+            return response()->json([
+                'message' => 'No se puede reasignar al mismo usuario.',
+            ], 422);
+        }
+
+        $threadRoomId = (int) ($thread->room ?? 0);
+
+        $onlineThreshold = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+        $onlineUsers = DB::table('sessions')
+            ->select('user_id')
+            ->where('last_activity', '>=', $onlineThreshold)
+            ->distinct();
+
+        $candidateQuery = DB::table('user_room as e')
+            ->join('room as d', function ($join) {
+                $join->on('e.room_id', '=', 'd.id')
+                    ->where('d.estado', '=', true);
+            })
+            ->joinSub($onlineUsers, 'f', function ($join) {
+                $join->on('f.user_id', '=', 'e.user_id');
+            })
+            ->where('e.estado', true)
+            ->where('d.company_id', (int) $thread->company_id)
+            ->where('d.communication_channel_id', (int) $thread->communication_channel_id)
+            ->where('e.user_id', $newAgentId);
+
+        if ($threadRoomId > 0) {
+            $candidateQuery->where('d.id', $threadRoomId);
+        }
+
+        $validCandidate = $candidateQuery->exists();
+
+        if (! $validCandidate) {
+            return response()->json([
+                'message' => 'El usuario destino no es válido para este room/canal/compañía o no está en línea.',
+            ], 422);
+        }
+
+        $thread->update([
+            'assigned_agent_id' => $newAgentId,
+        ]);
+
+        return response()->json([
+            'message' => 'Thread reasignado correctamente.',
+            'thread_id' => $thread->id,
+            'assigned_agent_id' => $newAgentId,
         ]);
     }
 

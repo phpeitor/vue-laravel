@@ -5,7 +5,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/vue3";
 import { onBeforeUnmount, onMounted, ref, watch, computed } from "vue";
 import useAuth from "@/composables/useAuth";
-import { SquarePlus, Edit, Trash2 } from 'lucide-vue-next'
+import { SquarePlus, Edit, Trash2, DoorOpen, Loader2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -13,6 +13,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast'
 import {
   AlertDialog,
@@ -126,6 +134,13 @@ onBeforeUnmount(() => {
 const deleteForm = useForm({});
 const deleteDialogOpen = ref(false)
 const deletingUserId = ref<number | null>(null)
+const roomTimelineOpen = ref(false)
+const roomTimelineLoading = ref(false)
+const roomTimelineRows = ref<Array<{ company_name: string | null; channel_name: string | null; room: string | null; asignacion: 'SI' | 'NO' }>>([])
+const roomTimelineUserName = ref('')
+const roomTimelineRowsWithRoom = computed(() =>
+  roomTimelineRows.value.filter((row) => String(row.room ?? '').trim() !== '')
+)
 
 const openDeleteDialog = (id: number) => {
   deletingUserId.value = id
@@ -143,6 +158,29 @@ const confirmDelete = async () => {
   } finally {
     deleteDialogOpen.value = false
     deletingUserId.value = null
+  }
+}
+
+const openRoomTimeline = async (user: { id: number; name: string }) => {
+  roomTimelineUserName.value = user.name
+  roomTimelineOpen.value = true
+  roomTimelineLoading.value = true
+
+  try {
+    const res = await fetch(route('users.rooms-timeline', user.id), {
+      headers: { Accept: 'application/json' },
+    })
+
+    if (!res.ok) {
+      roomTimelineRows.value = []
+      return
+    }
+
+    roomTimelineRows.value = (await res.json()) ?? []
+  } catch {
+    roomTimelineRows.value = []
+  } finally {
+    roomTimelineLoading.value = false
   }
 }
 </script>
@@ -257,6 +295,17 @@ const confirmDelete = async () => {
                         </td>
                         <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <div class="flex items-center justify-end gap-2">
+                            <Tooltip>
+                              <TooltipTrigger as-child>
+                                <Button variant="ghost" size="sm" @click="openRoomTimeline(user)">
+                                  <DoorOpen class="w-4 h-4 text-muted-foreground" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Rooms</p>
+                              </TooltipContent>
+                            </Tooltip>
+
                             <Tooltip v-if="hasPermission('edit user')">
                               <TooltipTrigger as-child>
                                 <Button variant="ghost" size="sm" as-child>
@@ -314,6 +363,49 @@ const confirmDelete = async () => {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog v-model:open="roomTimelineOpen">
+              <DialogContent class="sm:max-w-[640px]">
+                <DialogHeader>
+                  <DialogTitle>Rooms del usuario</DialogTitle>
+                  <DialogDescription>
+                    {{ roomTimelineUserName }}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div v-if="roomTimelineLoading" class="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                  Cargando rooms...
+                </div>
+
+                <div v-else class="max-h-96 overflow-y-auto pr-1">
+                  <div v-if="!roomTimelineRowsWithRoom.length" class="text-sm text-muted-foreground py-2">
+                    No hay rooms para mostrar.
+                  </div>
+
+                  <div v-for="(row, idx) in roomTimelineRowsWithRoom" :key="`${idx}-${row.company_name}-${row.channel_name}-${row.room}`" class="relative pl-6 pb-5">
+                    <span class="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full" :class="row.asignacion === 'SI' ? 'bg-green-500' : 'bg-muted-foreground/40'" />
+                    <span v-if="idx !== roomTimelineRowsWithRoom.length - 1" class="absolute left-[4px] top-4 h-full w-px bg-border" />
+
+                    <div class="text-sm font-medium">
+                      {{ row.company_name || 'Sin compañía' }} - {{ row.channel_name || 'Sin canal' }}
+                    </div>
+                    <div class="text-sm text-muted-foreground">
+                      Room: {{ row.room || 'Sin room' }}
+                    </div>
+                    <div class="mt-1">
+                      <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium" :class="row.asignacion === 'SI' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-muted text-muted-foreground'">
+                        Asignado: {{ row.asignacion }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" @click="roomTimelineOpen = false">Cerrar</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
