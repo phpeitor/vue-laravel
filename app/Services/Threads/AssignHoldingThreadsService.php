@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 class AssignHoldingThreadsService
 {
-    private const MAX_OPEN_THREADS_PER_AGENT = 3;
+    private const MAX_OPEN_THREADS_PER_AGENT = 10;
 
     public function execute(): array
     {
