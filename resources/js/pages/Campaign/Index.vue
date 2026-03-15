@@ -87,9 +87,6 @@ type PageProps = {
   campaign_logs: CampaignLog[]
   campaign_recipients: Paginator<CampaignRecipient>
   selectedCampaignId: number | null
-  config: {
-    hsmBaseUrl: string
-  }
 }
 
 type HsmStatusItem = {
@@ -123,7 +120,7 @@ const openHsmStatus = async (providerMessageId: string | null) => {
   statusMessageId.value = providerMessageId
 
   try {
-    const url = `${hsmBaseUrl.value}/hsm/${encodeURIComponent(providerMessageId)}/status`
+    const url = `/api/hsm/${encodeURIComponent(providerMessageId)}/status`
 
     const res = await fetch(url, {
       method: 'GET',
@@ -155,7 +152,6 @@ const openHsmStatus = async (providerMessageId: string | null) => {
 }
 
 const page = usePage<PageProps>()
-const hsmBaseUrl = computed(() => page.props.config?.hsmBaseUrl ?? '')
 const { statusVariant, badgeClass, statusBadgeClass } = useAppearance()
 
 const campaignsPaginator = computed(() => page.props.campaigns)

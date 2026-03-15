@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Inertia\Inertia;
 use App\Models\Thread;
 use App\Models\Message;
 use App\Observers\ThreadObserver;
@@ -26,11 +25,5 @@ class AppServiceProvider extends ServiceProvider
     {
         Thread::observe(ThreadObserver::class);
         Message::observe(MessageObserver::class);
-
-        Inertia::share([
-            'config' => [
-                'hsmBaseUrl' => config('services.hsm.base_url'),
-            ],
-        ]);
     }
 }
