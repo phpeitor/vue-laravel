@@ -247,7 +247,7 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
                         </th>
                         <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Nombre Completo</th>
                         <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Email</th>
-                        <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Password</th>
+                        <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Usuario</th>
                         <th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground sm:pl-6">Estado</th>
                         <th class="px-3 py-3.5 text-left text-sm font-semibold text-foreground">Creado</th>
                         <th class="relative py-3.5 pl-3 pr-4 sm:pr-6"> Acciones </th>
@@ -270,6 +270,7 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
                           </div>
                         </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm text-muted-foreground">{{ user.email }}</td>
+
                         <td class="px-3 py-4 text-sm text-muted-foreground max-w-xs truncate">
                           <Tooltip>
                             <TooltipTrigger as-child>
@@ -280,6 +281,9 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
                             </TooltipContent>
                           </Tooltip>
                         </td>
+
+                        <td class="px-3 py-4 text-sm text-muted-foreground max-w-xs truncate">{{ user.username }}</td>
+
                         <td class="whitespace-nowrap px-3 py-4 text-sm">
                           <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
