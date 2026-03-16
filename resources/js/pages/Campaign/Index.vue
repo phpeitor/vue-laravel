@@ -250,7 +250,6 @@ const formatDate = (value: string) => {
 
 const formatHHmm = (value: string) => {
   if (!value) return value
-  // start_time puede venir "10:55:00"
   return value.slice(0, 5)
 }
 

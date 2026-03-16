@@ -1169,7 +1169,6 @@ const sendMessageWithText = async (msg: string) => {
       headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
   } catch (e: any) {
-    // Marcar el optimistic como fallido
     const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
     if (idx >= 0) messagesList.value.splice(idx, 1)
 
