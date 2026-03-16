@@ -32,7 +32,7 @@ return [
         ],
     ],
     'hsm' => [
-        'base_url' => env('HSM_STATUS_BASE_URL', 'http://10.200.153.101:4502'),
+        'base_url' => env('HSM_STATUS_BASE_URL'),
     ],
     'chat' => [
         'thread_base_url' => env('CHAT_THREAD_BASE_URL'),
@@ -41,5 +41,8 @@ return [
         'new_url'  => env('WHATSAPP_NEW_URL'),
         'send_url' => env('WHATSAPP_SEND_URL'),
         'sync_url' => env('WHATSAPP_SYNC_URL'),
+    ],
+    'metadata' => [
+        'dni_lookup_url' => env('METADATA_DNI_LOOKUP_URL'),
     ],
 ];

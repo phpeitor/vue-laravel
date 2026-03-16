@@ -2,14 +2,29 @@
 import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import InputError from "@/components/InputError.vue";
+import { Loader2, Trash2 } from "lucide-vue-next";
 
-import { ref, computed, reactive, watchEffect } from "vue";
+import { ref, computed, reactive, watch, onBeforeUnmount } from "vue";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const breadcrumbs = [
   {
@@ -25,6 +40,7 @@ const breadcrumbs = [
 const props = defineProps({
   roles: { type: Array, default: () => [] },
   channels: { type: Array, default: () => [] },
+  rooms: { type: Array, default: () => [] },
 });
 
 const form = useForm({
@@ -34,7 +50,12 @@ const form = useForm({
   password: "",
   role: "",
   channels: [],
+  room_assignments: {},
 });
+
+const dniLookupLoading = ref(false);
+let dniLookupTimer = null;
+let lastLookedUpDni = "";
 
 const q = ref("");
 // Mapa reactivo id->boolean
@@ -79,8 +100,54 @@ const groupedChannels = computed(() => {
   return Array.from(map.entries()).map(([company, items]) => ({ company, items }));
 });
 
+const roomPickerOpen = ref(false);
+const activeChannel = ref(null);
+const roomAssignments = reactive({});
+
+const getChannelRooms = (channel) => {
+  return props.rooms.filter(
+    (room) =>
+      Number(room.company_id) === Number(channel.company_id)
+      && Number(room.communication_channel_id) === Number(channel.id)
+  );
+};
+
+const hasRoomsForChannel = (channel) => getChannelRooms(channel).length > 0;
+
+const openRoomPicker = (channel) => {
+  activeChannel.value = channel;
+  roomPickerOpen.value = true;
+};
+
+const selectRoomForActiveChannel = (room) => {
+  if (!activeChannel.value) return;
+  roomAssignments[String(activeChannel.value.id)] = Number(room.id);
+  roomPickerOpen.value = false;
+};
+
+const clearRoomAssignment = (channelId) => {
+  delete roomAssignments[String(channelId)];
+};
+
+const clearActiveChannelRoomAssignment = () => {
+  if (!activeChannel.value) return;
+  clearRoomAssignment(activeChannel.value.id);
+  roomPickerOpen.value = false;
+};
+
+const getAssignedRoomName = (channel) => {
+  const roomId = Number(roomAssignments[String(channel.id)] ?? 0);
+  if (!roomId) return "";
+  const room = getChannelRooms(channel).find((r) => Number(r.id) === roomId);
+  return room?.nombre ?? "";
+};
+
 const setChecked = (id, v) => {
-  selectedMap[String(id)] = v === true;
+  const checked = v === true;
+  selectedMap[String(id)] = checked;
+  if (!checked) {
+    clearRoomAssignment(id);
+  }
 };
 
 const selectAll = () => {
@@ -89,20 +156,81 @@ const selectAll = () => {
 };
 
 const deselectAll = () => {
-  Object.keys(selectedMap).forEach((id) => (selectedMap[id] = false));
+  Object.keys(selectedMap).forEach((id) => {
+    selectedMap[id] = false;
+    clearRoomAssignment(id);
+  });
 };
 
-// IMPORTANTE: antes de enviar, copia selectedIds a form.channels
+// IMPORTANTE: antes de enviar, copia selectedIds y room_assignments al form
 const submit = () => {
   form.channels = selectedIds.value;
+
+  const payload = {};
+  selectedIds.value.forEach((channelId) => {
+    const assignedRoomId = roomAssignments[String(channelId)];
+    if (assignedRoomId) {
+      payload[String(channelId)] = Number(assignedRoomId);
+    }
+  });
+
+  form.room_assignments = payload;
   form.post(route("users.store"), { preserveScroll: true });
 };
+
+watch(
+  () => form.username,
+  (value) => {
+    if (dniLookupTimer) {
+      clearTimeout(dniLookupTimer);
+      dniLookupTimer = null;
+    }
+
+    const dni = String(value ?? "").trim();
+    if (!/^\d{8}$/.test(dni)) return;
+    if (dni === lastLookedUpDni) return;
+
+    dniLookupTimer = setTimeout(async () => {
+      try {
+        dniLookupLoading.value = true;
+        const response = await fetch(`${route("users.lookup-dni")}?dni=${encodeURIComponent(dni)}`, {
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const firstName = String(data?.found_patient?.name ?? "").trim();
+        const lastName = String(data?.found_patient?.last_name ?? "").trim();
+        const fullName = `${firstName} ${lastName}`.trim();
+
+        if (fullName) {
+          form.name = fullName;
+          lastLookedUpDni = dni;
+        }
+      } catch {
+        // silent fail: no bloquear creación manual
+      } finally {
+        dniLookupLoading.value = false;
+      }
+    }, 450);
+  }
+);
+
+onBeforeUnmount(() => {
+  if (dniLookupTimer) {
+    clearTimeout(dniLookupTimer);
+  }
+});
 
 </script>
 
 <template>
   <Head title="Users" />
   <AppLayout :breadcrumbs="breadcrumbs">
+    <TooltipProvider :delay-duration="100">
     <div class="w-full py-10 px-6">
       <div class="grid grid-cols-12 gap-8">
         <!-- FORM -->
@@ -139,6 +267,10 @@ const submit = () => {
                       class="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-foreground focus:ring-primary focus:border-primary"
                       :class="{ 'border-red-500': form.errors.username }"
                     />
+                    <p v-if="dniLookupLoading" class="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 class="h-3.5 w-3.5 animate-spin" />
+                      Consultando DNI...
+                    </p>
                     <InputError class="mt-2" :message="form.errors.username" />
                   </div>
 
@@ -183,8 +315,9 @@ const submit = () => {
                   </div>
                 </div>
 
-                <!-- error general de channels si lo fuerzas a required -->
+                <!-- errores de selección -->
                 <InputError class="mt-2" :message="form.errors.channels" />
+                <InputError class="mt-2" :message="form.errors.room_assignments" />
               </div>
 
               <div class="flex justify-end gap-3 border-t border-border bg-muted px-6 py-4">
@@ -254,17 +387,53 @@ const submit = () => {
 
                     <template v-for="(ch, idx) in group.items" :key="ch.id">
                       <!-- item -->
-                      <div class="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
-                        <Checkbox
-                          :id="`ch-${ch.id}`"
-                          :checked="selectedMap[String(ch.id)] === true"
-                          :model-value="selectedMap[String(ch.id)] === true"
-                          @update:checked="(v) => setChecked(ch.id, v)"
-                          @update:model-value="(v) => setChecked(ch.id, v)"
-                        />
-                        <label :for="`ch-${ch.id}`" class="text-sm leading-tight cursor-pointer select-none">
-                          {{ ch.channel_name }}
-                        </label>
+                      <div class="rounded-md px-2 py-2 hover:bg-muted">
+                        <div class="flex items-center gap-3">
+                          <Checkbox
+                            :id="`ch-${ch.id}`"
+                            :checked="selectedMap[String(ch.id)] === true"
+                            :model-value="selectedMap[String(ch.id)] === true"
+                            @update:checked="(v) => setChecked(ch.id, v)"
+                            @update:model-value="(v) => setChecked(ch.id, v)"
+                          />
+                          <label :for="`ch-${ch.id}`" class="text-sm leading-tight cursor-pointer select-none flex-1">
+                            {{ ch.channel_name }}
+                          </label>
+
+                          <Button
+                            v-if="selectedMap[String(ch.id)] === true && hasRoomsForChannel(ch)"
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="openRoomPicker(ch)"
+                          >
+                            {{ getAssignedRoomName(ch) ? 'Cambiar room' : 'Asignar room' }}
+                          </Button>
+                        </div>
+
+                        <div
+                          v-if="selectedMap[String(ch.id)] === true && hasRoomsForChannel(ch) && getAssignedRoomName(ch)"
+                          class="pl-8 pt-1 text-xs text-muted-foreground flex items-center gap-2"
+                        >
+                          <span>
+                            Room: <span class="font-medium text-foreground">{{ getAssignedRoomName(ch) }}</span>
+                          </span>
+                          <Tooltip>
+                            <TooltipTrigger as-child>
+                              <button
+                                type="button"
+                                class="inline-flex items-center justify-center rounded-md p-1 hover:bg-muted-foreground/10"
+                                aria-label="Eliminar"
+                                @click="clearRoomAssignment(ch.id)"
+                              >
+                                <Trash2 class="h-4 w-4 text-destructive" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Eliminar</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       </div>
                     </template>
 
@@ -279,5 +448,53 @@ const submit = () => {
 
       </div>
     </div>
+    <Dialog v-model:open="roomPickerOpen">
+      <DialogContent class="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>Seleccionar room</DialogTitle>
+          <DialogDescription>
+            Elija 1 room para el channel {{ activeChannel?.channel_name ?? '' }}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="max-h-80 overflow-y-auto space-y-2 py-1">
+          <button
+            v-for="room in (activeChannel ? getChannelRooms(activeChannel) : [])"
+            :key="room.id"
+            type="button"
+            class="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+            :class="Number(roomAssignments[String(activeChannel?.id ?? '')] ?? 0) === Number(room.id) ? 'border-primary bg-muted' : 'border-border'"
+            @click="selectRoomForActiveChannel(room)"
+          >
+            {{ room.nombre }}
+          </button>
+
+          <div v-if="activeChannel && getChannelRooms(activeChannel).length === 0" class="text-sm text-muted-foreground">
+            No hay rooms disponibles para este channel.
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Tooltip v-if="activeChannel && Number(roomAssignments[String(activeChannel.id)] ?? 0) > 0">
+            <TooltipTrigger as-child>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Eliminar"
+                @click="clearActiveChannelRoomAssignment"
+              >
+                <Trash2 class="h-4 w-4 text-destructive" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Eliminar</p>
+            </TooltipContent>
+          </Tooltip>
+          <Button type="button" variant="outline" @click="roomPickerOpen = false">Cancelar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </TooltipProvider>
   </AppLayout>
 </template>

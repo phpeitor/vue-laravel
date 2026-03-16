@@ -40,6 +40,14 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:add user')
         ->name('users.create');
 
+    Route::get('/users/lookup-dni', [UserController::class, 'lookupDni'])
+        ->middleware('permission:add user')
+        ->name('users.lookup-dni');
+
+    Route::get('/users/{user}/rooms-timeline', [UserController::class, 'roomsTimeline'])
+        ->middleware('permission:users')
+        ->name('users.rooms-timeline');
+
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])
         ->middleware('permission:edit user')
         ->name('users.edit');
@@ -79,6 +87,8 @@ Route::middleware(['auth', 'permission:chat'])->group(function () {
 Route::get('/chat/tipificaciones', [ChatController::class, 'tipificaciones']);
 Route::middleware(['auth'])->get('/chat/agents', [ChatController::class, 'agents']);
 Route::middleware(['auth'])->patch('/chat/threads/{thread}/close', [ChatController::class, 'closeThread']);
+Route::middleware(['auth'])->get('/chat/threads/{thread}/reassignment-candidates', [ChatController::class, 'reassignmentCandidates']);
+Route::middleware(['auth'])->patch('/chat/threads/{thread}/reassign', [ChatController::class, 'reassignThread']);
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/chat/history', [ChatController::class, 'historyByPhone']);
