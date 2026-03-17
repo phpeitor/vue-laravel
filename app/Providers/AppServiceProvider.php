@@ -27,15 +27,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Thread::observe(ThreadObserver::class);
         Message::observe(MessageObserver::class);
-
-
         User::observe(UserObserver::class);
-
-        Inertia::share([
-            'config' => [
-                'hsmBaseUrl' => config('services.hsm.base_url'),
-            ],
-        ]);
 
     }
 }
