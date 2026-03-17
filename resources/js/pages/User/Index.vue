@@ -276,8 +276,6 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
                           </Tooltip>
                         </td>
 
-                        <td class="px-3 py-4 text-sm text-muted-foreground max-w-xs truncate">{{ user.username }}</td>
-
                         <td class="whitespace-nowrap px-3 py-4 text-sm">
                           <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
