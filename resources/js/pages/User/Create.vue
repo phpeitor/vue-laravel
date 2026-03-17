@@ -56,10 +56,8 @@ let dniLookupTimer = null;
 let lastLookedUpDni = "";
 
 const q = ref("");
-// Mapa reactivo id->boolean
 const selectedMap = reactive({});
 
-// Inicializa keys (una vez que llegan channels)
 const ensureKeys = () => {
   props.channels.forEach((ch) => {
     const id = String(ch.id);
@@ -68,7 +66,6 @@ const ensureKeys = () => {
 };
 ensureKeys();
 
-// ids seleccionados (siempre derivado del mapa)
 const selectedIds = computed(() =>
   Object.keys(selectedMap)
     .filter((id) => selectedMap[id] === true)
