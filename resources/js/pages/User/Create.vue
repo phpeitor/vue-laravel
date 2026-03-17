@@ -205,7 +205,7 @@ watch(
           lastLookedUpDni = dni;
         }
       } catch {
-        // silent fail: no bloquear creación manual
+        // silent fail
       } finally {
         dniLookupLoading.value = false;
       }

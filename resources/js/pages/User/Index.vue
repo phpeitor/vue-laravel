@@ -60,7 +60,6 @@ const searchTerm = ref<string>(page.props.search ?? "")
 const debouncedSearchTerm = ref<string>(String(page.props.search ?? ""))
 const sortDirection = ref<string>(String(page.props.direction ?? 'asc'))
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
 type PaginationLink = { url?: string | null } | null
 
 const pageNumberUpdated = (link: PaginationLink) => {
