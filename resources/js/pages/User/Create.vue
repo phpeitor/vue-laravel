@@ -3,9 +3,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import InputError from "@/components/InputError.vue";
 import { Loader2, Trash2 } from "lucide-vue-next";
-
 import { ref, computed, reactive, watch, onBeforeUnmount } from "vue";
-
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -162,7 +160,6 @@ const deselectAll = () => {
   });
 };
 
-// IMPORTANTE: antes de enviar, copia selectedIds y room_assignments al form
 const submit = () => {
   form.channels = selectedIds.value;
 
@@ -224,7 +221,6 @@ onBeforeUnmount(() => {
     clearTimeout(dniLookupTimer);
   }
 });
-
 </script>
 
 <template>
@@ -363,7 +359,6 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="mt-3">
-                  <!-- ✅ NO v-model: usamos value + input -->
                   <Input
                     :value="q"
                     :model-value="q"
