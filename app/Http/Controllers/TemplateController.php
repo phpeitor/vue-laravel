@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Template;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role; 
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
@@ -101,233 +103,10 @@ class TemplateController extends Controller
     {
         $companyId = $request->query('companyId');
         $communicationChannelId = $request->query('communicationChannelId');
-
-        $validated = $request->validate([
-            'nombre' => 'required|string|max:100',
-            'idioma' => 'required|string|max:5',
-            'categoria' => 'required|string|max:30',
-            'tipo' => 'required|string|max:30',
-            'cuerpo' => 'required|string|max:1024',
-            'pie_pagina' => 'nullable|string|max:60',
-            'header_file' => 'nullable|file|mimes:jpg,jpeg,png,mp4,pdf|max:10240',
-        ]);
-
-        preg_match_all('/{{\d+}}/', $validated['cuerpo'], $matches);
-        $totalVariables = count(array_unique($matches[0]));
-
-        $examples = [];
-        for ($i = 1; $i <= $totalVariables; $i++) {
-            $examples[] = "Ejemplo $i";
-        }
-
-        $headerComponent = null;
-        $url = null; 
-
-        if ($request->has('tipo_cabecera')) {
-            $tipoCabecera = $request->input('tipo_cabecera');
-
-            if ($tipoCabecera === 'texto') {
-                $texto = $request->input('texto_encabezado');
-                if ($texto) {
-                    $headerComponent = [
-                        "type" => "HEADER",
-                        "format" => "TEXT",
-                        "text" => $texto,
-                        "example" => [
-                            "header_text" => ["Talina"]
-                        ]
-                    ];
-                }
-            }
-
-            if ($tipoCabecera === 'multimedia' && $request->hasFile('header_file')) {
-                $file = $request->file('header_file');
-                $extension = $file->getClientOriginalExtension();
-                $format = null;
-                $folder = null;
-
-                switch (strtolower($request->input('tipo_multimedia'))) {
-                    case 'imagen':
-                        $format = 'IMAGE';
-                        $url = "https://talina.xyz/hsm/img/laravel.jpg"; 
-                        $folder = 'img';
-                        break;
-                    case 'video':
-                        $format = 'VIDEO';
-                        $url = "https://talina.xyz/video/imperia.mp4";
-                        $folder = 'video';
-                        break;
-                    case 'documento':
-                        $format = 'DOCUMENT';
-                        $url = "https://talina.xyz/hsm/pdf/moca.pdf";
-                        $folder = 'pdf';
-                        break;
-                }
-
-                if ($format && $folder) {
-                    $fileName = uniqid('header_') . '.' . $extension;
-                    $filePath = "hsm/{$folder}/{$fileName}";
-                    $file->move(public_path("hsm/{$folder}"), $fileName);
-                    //$url = "https://talina.xyz/{$filePath}";
-
-                    $headerComponent = [
-                        "type" => "HEADER",
-                        "format" => $format,
-                        "example" => [
-                            "header_handle" => [$url]
-                        ]
-                    ];
-
-                    $absolutePath = public_path("hsm/{$folder}/{$fileName}");
-                    \Log::info("Archivo guardado en: {$absolutePath}");
-                }
-            }
-        }
-
-        $components = [];
-
-        if ($headerComponent) {
-            $components[] = $headerComponent;
-        }
-
-        $bodyComponent = [
-            "type" => "BODY",
-            "text" => $validated['cuerpo'],
-        ];
-
-        if ($totalVariables > 0) {
-            $examples = [];
-            for ($i = 1; $i <= $totalVariables; $i++) {
-                $examples[] = "Ejemplo $i";
-            }
-
-            $bodyComponent["example"] = [
-                "body_text" => [$examples]
-            ];
-        }
-
-        $components[] = $bodyComponent;
-
-         // BUTTONS 
-        $rawButtons = $request->input('botones', []);
-        $buttonsPayload = [];
-        $errors = [];
-        $limits = ['BOTON' => 5, 'URL' => 2, 'TELEFONO' => 1];
-        $counts = ['BOTON' => 0, 'URL' => 0, 'TELEFONO' => 0];
-
-        foreach ($rawButtons as $i => $btn) {
-            $kind = strtoupper(trim($btn['kind'] ?? ''));
-            $text = trim($btn['text'] ?? '');
-
-            if (!in_array($kind, ['BOTON', 'URL', 'TELEFONO'], true)) {
-                $errors["botones.$i.kind"] = 'Tipo de botón inválido.';
-                continue;
-            }
-
-            $counts[$kind]++;
-            if ($counts[$kind] > $limits[$kind]) {
-                $errors["botones.$i.limit"] = "Se excedió el máximo para $kind.";
-                continue;
-            }
-
-            if ($text === '' || mb_strlen($text) > 25) {
-                $errors["botones.$i.text"] = 'Texto requerido (máximo 25 caracteres).';
-                continue;
-            }
-
-            if ($kind === 'URL') {
-                $btnUrl = trim($btn['url'] ?? '');
-                if ($btnUrl === '' || mb_strlen($btnUrl) > 255) {
-                    $errors["botones.$i.url"] = 'URL requerida (máximo 255).';
-                    continue;
-                }
-                if (!filter_var($btnUrl, FILTER_VALIDATE_URL)) {
-                    $errors["botones.$i.url"] = 'URL inválida.';
-                    continue;
-                }
-                // Orden de claves: type -> text -> url
-                $buttonsPayload[] = [
-                    "type" => "URL",
-                    "text" => $text,
-                    "url"  => $btnUrl,
-                ];
-            } elseif ($kind === 'TELEFONO') {
-                $phone = preg_replace('/\D+/', '', (string)($btn['phone'] ?? ''));
-                if ($phone === '' || strlen($phone) !== 11) {
-                    $errors["botones.$i.phone"] = 'Teléfono requerido de 11 dígitos.';
-                    continue;
-                }
-                // Orden de claves: type -> text -> phone_number
-                $buttonsPayload[] = [
-                    "type"         => "PHONE_NUMBER",
-                    "text"         => $text,
-                    "phone_number" => $phone,
-                ];
-            } else { 
-                // Orden de claves: type -> text
-                $buttonsPayload[] = [
-                    "type" => "QUICK_REPLY",
-                    "text" => $text,
-                ];
-            }
-        }
-
-        if (!empty($errors)) {
-            return back()->withErrors($errors)->withInput();
-        }
-
-        $buttonsPayload = array_map(function ($b) {
-            switch ($b['type'] ?? '') {
-                case 'URL':
-                    return [
-                        'type' => 'URL',
-                        'text' => $b['text'] ?? '',
-                        'url'  => $b['url'] ?? '',
-                    ];
-                case 'PHONE_NUMBER':
-                    return [
-                        'type'         => 'PHONE_NUMBER',
-                        'text'         => $b['text'] ?? '',
-                        'phone_number' => $b['phone_number'] ?? '',
-                    ];
-                default: 
-                    return [
-                        'type' => 'QUICK_REPLY',
-                        'text' => $b['text'] ?? '',
-                    ];
-            }
-        }, $buttonsPayload);
-
-        if (!empty($buttonsPayload)) {
-            $components[] = [
-                "type"    => "BUTTONS",
-                "buttons" => $buttonsPayload,
-            ];
-        }
-
-        if (!empty($validated['pie_pagina'])) {
-            $components[] = [
-                "type" => "FOOTER",
-                "text" => $validated['pie_pagina']
-            ];
-        }
-
-        $payload = [
-            "companyId" => (int)$companyId,
-            "communicationChannelId" => (int)$communicationChannelId,
-            "templateData" => [
-                "name" => $validated['nombre'],
-                "language" => $validated['idioma'],
-                "category" => strtoupper($validated['categoria']),
-                "components" => $components,
-            ]
-        ];
-
-        /*dd([
-            'ruta_local' => $absolutePath ?? null,
-            'url_header_manual' => $url, 
-            'payload' => $payload
-        ]);*/
+        $validated = $this->validateTemplateInput($request);
+        $built = $this->buildTemplatePayload($request, $validated, true);
+        $payload = $built['payload'];
+        $url = $built['header_url'];
 
         $response = Http::withOptions([
             'verify' => false,
@@ -354,7 +133,6 @@ class TemplateController extends Controller
                 ]);
             }
 
-            //return redirect()->route('templates.index')->with('success', 'Plantilla creada exitosamente');
             return redirect()->route('templates.index', [
                 'companyId' => $companyId,
                 'communicationChannelId' => $communicationChannelId,
@@ -376,6 +154,22 @@ class TemplateController extends Controller
             return back()->withErrors(['api' => 'Error al crear plantilla: ' . $errorMessage]);
         }
             
+    }
+
+    public function previewPayload(Request $request): JsonResponse
+    {
+        $validated = $this->validateTemplateInput($request);
+        $built = $this->buildTemplatePayload($request, $validated, false);
+
+        return response()->json([
+            'success' => true,
+            'preview' => [
+                'target_url' => config('services.whatsapp.new_url'),
+                'header_url' => $built['header_url'],
+                'stored_relative_path' => $built['stored_relative_path'],
+                'payload' => $built['payload'],
+            ],
+        ]);
     }
 
     public function delete(Request $request, $id)
@@ -491,6 +285,243 @@ class TemplateController extends Controller
             \Log::error('Error al enviar prueba de plantilla: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al conectarse con el API.');
         }
+    }
+
+    private function validateTemplateInput(Request $request): array
+    {
+        return $request->validate([
+            'nombre' => 'required|string|max:100',
+            'idioma' => 'required|string|max:5',
+            'categoria' => 'required|string|max:30',
+            'tipo' => 'required|string|max:30',
+            'cuerpo' => 'required|string|max:1024',
+            'pie_pagina' => 'nullable|string|max:60',
+            'header_file' => 'nullable|file|mimes:jpg,jpeg,png,mp4,pdf|max:5120',
+        ]);
+    }
+
+    private function buildTemplatePayload(Request $request, array $validated, bool $persistUploadedFile): array
+    {
+        $companyId = (int) $request->query('companyId');
+        $communicationChannelId = (int) $request->query('communicationChannelId');
+
+        preg_match_all('/{{\d+}}/', $validated['cuerpo'], $matches);
+        $totalVariables = count(array_unique($matches[0]));
+
+        $headerComponent = null;
+        $headerUrl = null;
+        $storedRelativePath = null;
+
+        if ($request->has('tipo_cabecera')) {
+            $tipoCabecera = $request->input('tipo_cabecera');
+
+            if ($tipoCabecera === 'texto') {
+                $texto = $request->input('texto_encabezado');
+                if ($texto) {
+                    $headerComponent = [
+                        'type' => 'HEADER',
+                        'format' => 'TEXT',
+                        'text' => $texto,
+                        'example' => [
+                            'header_text' => ['Talina'],
+                        ],
+                    ];
+                }
+            }
+
+            if ($tipoCabecera === 'multimedia' && $request->hasFile('header_file')) {
+                $headerData = $this->buildMultimediaHeader($request, $persistUploadedFile);
+                $headerComponent = $headerData['component'];
+                $headerUrl = $headerData['url'];
+                $storedRelativePath = $headerData['stored_relative_path'];
+            }
+        }
+
+        $components = [];
+
+        if ($headerComponent) {
+            $components[] = $headerComponent;
+        }
+
+        $bodyComponent = [
+            'type' => 'BODY',
+            'text' => $validated['cuerpo'],
+        ];
+
+        if ($totalVariables > 0) {
+            $examples = [];
+            for ($i = 1; $i <= $totalVariables; $i++) {
+                $examples[] = "Ejemplo $i";
+            }
+
+            $bodyComponent['example'] = [
+                'body_text' => [$examples],
+            ];
+        }
+
+        $components[] = $bodyComponent;
+
+        $buttonsPayload = $this->buildButtonsPayload($request);
+
+        if (!empty($buttonsPayload)) {
+            $components[] = [
+                'type' => 'BUTTONS',
+                'buttons' => $buttonsPayload,
+            ];
+        }
+
+        if (!empty($validated['pie_pagina'])) {
+            $components[] = [
+                'type' => 'FOOTER',
+                'text' => $validated['pie_pagina'],
+            ];
+        }
+
+        return [
+            'payload' => [
+                'companyId' => $companyId,
+                'communicationChannelId' => $communicationChannelId,
+                'templateData' => [
+                    'name' => $validated['nombre'],
+                    'language' => $validated['idioma'],
+                    'category' => strtoupper($validated['categoria']),
+                    'components' => $components,
+                ],
+            ],
+            'header_url' => $headerUrl,
+            'stored_relative_path' => $storedRelativePath,
+        ];
+    }
+
+    private function buildMultimediaHeader(Request $request, bool $persistUploadedFile): array
+    {
+        $file = $request->file('header_file');
+        $extension = strtolower((string) $file?->getClientOriginalExtension());
+
+        $map = [
+            'imagen' => ['format' => 'IMAGE', 'folder' => 'img'],
+            'video' => ['format' => 'VIDEO', 'folder' => 'video'],
+            'documento' => ['format' => 'DOCUMENT', 'folder' => 'pdf'],
+        ];
+
+        $type = strtolower((string) $request->input('tipo_multimedia'));
+        $selected = $map[$type] ?? null;
+
+        if (!$file || !$selected) {
+            return [
+                'component' => null,
+                'url' => null,
+                'stored_relative_path' => null,
+            ];
+        }
+
+        $fileNamePrefix = $persistUploadedFile ? 'header_' : 'preview_';
+        $fileName = $fileNamePrefix . Str::random(12) . '.' . $extension;
+        $storedRelativePath = sprintf('hsm/%s/%s', $selected['folder'], $fileName);
+
+        if ($persistUploadedFile) {
+            $destination = public_path(sprintf('hsm/%s', $selected['folder']));
+
+            if (!is_dir($destination)) {
+                mkdir($destination, 0755, true);
+            }
+
+            $file->move($destination, $fileName);
+        }
+
+        $url = $this->buildPublicAssetUrl($request, $storedRelativePath);
+
+        return [
+            'component' => [
+                'type' => 'HEADER',
+                'format' => $selected['format'],
+                'example' => [
+                    'header_handle' => [$url],
+                ],
+            ],
+            'url' => $url,
+            'stored_relative_path' => $storedRelativePath,
+        ];
+    }
+
+    private function buildButtonsPayload(Request $request): array
+    {
+        $rawButtons = $request->input('botones', []);
+        $buttonsPayload = [];
+        $errors = [];
+        $limits = ['BOTON' => 5, 'URL' => 2, 'TELEFONO' => 1];
+        $counts = ['BOTON' => 0, 'URL' => 0, 'TELEFONO' => 0];
+
+        foreach ($rawButtons as $i => $btn) {
+            $kind = strtoupper(trim($btn['kind'] ?? ''));
+            $text = trim($btn['text'] ?? '');
+
+            if (!in_array($kind, ['BOTON', 'URL', 'TELEFONO'], true)) {
+                $errors["botones.$i.kind"] = 'Tipo de botón inválido.';
+                continue;
+            }
+
+            $counts[$kind]++;
+            if ($counts[$kind] > $limits[$kind]) {
+                $errors["botones.$i.limit"] = "Se excedió el máximo para $kind.";
+                continue;
+            }
+
+            if ($text === '' || mb_strlen($text) > 25) {
+                $errors["botones.$i.text"] = 'Texto requerido (máximo 25 caracteres).';
+                continue;
+            }
+
+            if ($kind === 'URL') {
+                $btnUrl = trim($btn['url'] ?? '');
+                if ($btnUrl === '' || mb_strlen($btnUrl) > 255) {
+                    $errors["botones.$i.url"] = 'URL requerida (máximo 255).';
+                    continue;
+                }
+                if (!filter_var($btnUrl, FILTER_VALIDATE_URL)) {
+                    $errors["botones.$i.url"] = 'URL inválida.';
+                    continue;
+                }
+
+                $buttonsPayload[] = [
+                    'type' => 'URL',
+                    'text' => $text,
+                    'url' => $btnUrl,
+                ];
+                continue;
+            }
+
+            if ($kind === 'TELEFONO') {
+                $phone = preg_replace('/\D+/', '', (string) ($btn['phone'] ?? ''));
+                if ($phone === '' || strlen($phone) !== 11) {
+                    $errors["botones.$i.phone"] = 'Teléfono requerido de 11 dígitos.';
+                    continue;
+                }
+
+                $buttonsPayload[] = [
+                    'type' => 'PHONE_NUMBER',
+                    'text' => $text,
+                    'phone_number' => $phone,
+                ];
+                continue;
+            }
+
+            $buttonsPayload[] = [
+                'type' => 'QUICK_REPLY',
+                'text' => $text,
+            ];
+        }
+
+        if (!empty($errors)) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
+
+        return $buttonsPayload;
+    }
+
+    private function buildPublicAssetUrl(Request $request, string $relativePath): string
+    {
+        return rtrim($request->root(), '/') . '/' . ltrim($relativePath, '/');
     }
 
 }

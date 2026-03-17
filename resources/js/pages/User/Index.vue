@@ -42,9 +42,7 @@ const breadcrumbs = [
 
 const { hasPermission } = useAuth();
 const props = defineProps<{ users: { data: any[] } }>()
-
 const page = usePage() as any
-
 const { toast } = useToast()
 
 onMounted(() => {
@@ -62,7 +60,6 @@ const searchTerm = ref<string>(page.props.search ?? "")
 const debouncedSearchTerm = ref<string>(String(page.props.search ?? ""))
 const sortDirection = ref<string>(String(page.props.direction ?? 'asc'))
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
 type PaginationLink = { url?: string | null } | null
 
 const pageNumberUpdated = (link: PaginationLink) => {
@@ -99,7 +96,6 @@ const toggleSort = () => {
 watch(
     () => usersUrl.value,
     (newValue) => {
-    // Evita que el overlay del AlertDialog quede "pegado" entre navegaciones.
     deleteDialogOpen.value = false
     deletingUserId.value = null
 
@@ -227,9 +223,7 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
               </div>
             </div>
           </div>
-
-          <!-- Toaster shows server flash messages as toasts on mount -->
-
+          
           <div class="mt-8 flex flex-col w-full">
             <div class="rounded-md border shadow overflow-hidden">
               <div class="w-full overflow-x-auto">

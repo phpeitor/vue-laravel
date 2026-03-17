@@ -29,6 +29,10 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:add template')
         ->name('templates.create');
 
+    Route::post('/templates/preview-payload', [TemplateController::class, 'previewPayload'])
+        ->middleware('permission:add template')
+        ->name('templates.previewPayload');
+
     Route::get('/campaigns/create', [CampaignController::class, 'create'])
         ->middleware('permission:add campaign')
         ->name('campaigns.create');

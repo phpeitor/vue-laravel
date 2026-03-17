@@ -3,9 +3,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 import InputError from "@/components/InputError.vue";
 import { Loader2, Trash2 } from "lucide-vue-next";
-
 import { ref, computed, reactive, watch, onBeforeUnmount } from "vue";
-
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -58,10 +56,8 @@ let dniLookupTimer = null;
 let lastLookedUpDni = "";
 
 const q = ref("");
-// Mapa reactivo id->boolean
 const selectedMap = reactive({});
 
-// Inicializa keys (una vez que llegan channels)
 const ensureKeys = () => {
   props.channels.forEach((ch) => {
     const id = String(ch.id);
@@ -70,7 +66,6 @@ const ensureKeys = () => {
 };
 ensureKeys();
 
-// ids seleccionados (siempre derivado del mapa)
 const selectedIds = computed(() =>
   Object.keys(selectedMap)
     .filter((id) => selectedMap[id] === true)
@@ -162,7 +157,6 @@ const deselectAll = () => {
   });
 };
 
-// IMPORTANTE: antes de enviar, copia selectedIds y room_assignments al form
 const submit = () => {
   form.channels = selectedIds.value;
 
@@ -211,7 +205,7 @@ watch(
           lastLookedUpDni = dni;
         }
       } catch {
-        // silent fail: no bloquear creación manual
+        // silent fail
       } finally {
         dniLookupLoading.value = false;
       }
@@ -224,7 +218,6 @@ onBeforeUnmount(() => {
     clearTimeout(dniLookupTimer);
   }
 });
-
 </script>
 
 <template>
@@ -363,7 +356,6 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="mt-3">
-                  <!-- ✅ NO v-model: usamos value + input -->
                   <Input
                     :value="q"
                     :model-value="q"
