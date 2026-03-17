@@ -42,9 +42,7 @@ const breadcrumbs = [
 
 const { hasPermission } = useAuth();
 const props = defineProps<{ users: { data: any[] } }>()
-
 const page = usePage() as any
-
 const { toast } = useToast()
 
 onMounted(() => {
@@ -99,7 +97,6 @@ const toggleSort = () => {
 watch(
     () => usersUrl.value,
     (newValue) => {
-    // Evita que el overlay del AlertDialog quede "pegado" entre navegaciones.
     deleteDialogOpen.value = false
     deletingUserId.value = null
 
