@@ -1,6 +1,7 @@
 <script setup >
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, Link, useForm } from "@inertiajs/vue3";
+import axios from 'axios'
 import { Bell, Check, PhoneOutgoing, Link2, SquarePlus, Trash2 } from 'lucide-vue-next';
 import InputError from "@/components/InputError.vue";
 import { Label } from '@/components/ui/label'
@@ -167,6 +168,75 @@ const submit = () => {
   })
 }
 
+const payloadPreviewLoading = ref(false)
+const payloadPreviewError = ref('')
+const payloadPreviewData = ref(null)
+
+const buildPreviewFormData = () => {
+  const formData = new FormData()
+
+  formData.append('nombre', form.nombre ?? '')
+  formData.append('idioma', form.idioma ?? '')
+  formData.append('tipo', form.tipo ?? '')
+  formData.append('categoria', form.categoria ?? '')
+  formData.append('tipo_cabecera', form.tipo_cabecera ?? '')
+  formData.append('texto_encabezado', form.texto_encabezado ?? '')
+  formData.append('tipo_multimedia', form.tipo_multimedia ?? '')
+  formData.append('cuerpo', form.cuerpo ?? '')
+  formData.append('pie_pagina', form.pie_pagina ?? '')
+
+  if (form.header_file) {
+    formData.append('header_file', form.header_file)
+  }
+
+  form.botones.forEach((btn, idx) => {
+    formData.append(`botones[${idx}][kind]`, btn.kind ?? '')
+    formData.append(`botones[${idx}][text]`, btn.text ?? '')
+
+    if (btn.kind === 'URL') {
+      formData.append(`botones[${idx}][url]`, btn.url ?? '')
+    }
+
+    if (btn.kind === 'TELEFONO') {
+      formData.append(`botones[${idx}][phone]`, btn.phone ?? '')
+    }
+  })
+
+  return formData
+}
+
+const previewPayload = async () => {
+  payloadPreviewError.value = ''
+  payloadPreviewData.value = null
+
+  if (form.tipo_cabecera === 'multimedia' && !form.header_file) {
+    form.errors.header_file = 'Debes seleccionar un archivo multimedia'
+    return
+  }
+
+  if (!validateButtonsRequired()) {
+    return
+  }
+
+  payloadPreviewLoading.value = true
+
+  try {
+    const url = route('templates.previewPayload') + `?companyId=${companyId}&communicationChannelId=${communicationChannelId}`
+    const response = await axios.post(url, buildPreviewFormData(), {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Accept': 'application/json',
+      },
+    })
+
+    payloadPreviewData.value = response.data?.preview ?? null
+  } catch (error) {
+    payloadPreviewError.value = error?.response?.data?.message ?? 'No se pudo generar el body previo.'
+  } finally {
+    payloadPreviewLoading.value = false
+  }
+}
+
 const horaActual = ref('')
 
 const actualizarHora = () => {
@@ -247,6 +317,7 @@ const onNombreInput = (e) => {
 
 const headerFile = ref(null)
 const headerPreviewUrl = ref('')
+const MAX_HEADER_FILE_BYTES = 5 * 1024 * 1024
 
 const onFileChange = (e) => {
   const file = e.target.files[0]
@@ -254,11 +325,22 @@ const onFileChange = (e) => {
     headerFile.value = null
     headerPreviewUrl.value = ''
     form.header_file = null
+    form.errors.header_file = ''
+    return
+  }
+
+  if (file.size > MAX_HEADER_FILE_BYTES) {
+    headerFile.value = null
+    headerPreviewUrl.value = ''
+    form.header_file = null
+    form.errors.header_file = 'El archivo no debe superar 5 MB.'
+    e.target.value = ''
     return
   }
 
   headerFile.value = file
-  form.header_file = file 
+  form.header_file = file
+  form.errors.header_file = ''
   headerPreviewUrl.value = URL.createObjectURL(file)
 }
 
@@ -835,11 +917,35 @@ setInterval(actualizarHora, 60000)
                   :href="route('templates.index', { companyId, communicationChannelId })"
                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary bg-muted hover:bg-muted/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary mr-4 transition-colors">Cancel </Link>
 
+                <button
+                  type="button"
+                  class="bg-secondary text-secondary-foreground hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors px-4 py-2 rounded-md text-sm font-medium mr-4"
+                  :disabled="payloadPreviewLoading || form.processing"
+                  @click="previewPayload"
+                >
+                  {{ payloadPreviewLoading ? 'Generando body...' : 'Ver body API' }}
+                </button>
+
                 <button type="submit" class="bg-primary text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors px-4 py-2 rounded-md text-sm font-medium"
                 > Enviar </button>
 
                 <div v-if="form.errors.api" class="text-red-600 mt-2">
                   {{ form.errors.api }}
+                </div>
+
+                <div v-if="payloadPreviewError" class="mt-3 text-left text-sm text-red-600">
+                  {{ payloadPreviewError }}
+                </div>
+
+                <div v-if="payloadPreviewData" class="mt-4 rounded-md border bg-background p-4 text-left">
+                  <div class="mb-2 text-sm font-medium text-foreground">Body que Laravel enviaria al API</div>
+                  <div v-if="payloadPreviewData.target_url" class="mb-2 text-xs text-muted-foreground">
+                    Endpoint: {{ payloadPreviewData.target_url }}
+                  </div>
+                  <div v-if="payloadPreviewData.header_url" class="mb-2 text-xs text-muted-foreground break-all">
+                    Header URL: {{ payloadPreviewData.header_url }}
+                  </div>
+                  <pre class="overflow-auto rounded bg-muted p-3 text-xs">{{ JSON.stringify(payloadPreviewData.payload, null, 2) }}</pre>
                 </div>
 
               </div>
