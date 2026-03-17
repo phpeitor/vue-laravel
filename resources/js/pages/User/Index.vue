@@ -227,9 +227,7 @@ const openRoomTimeline = async (user: { id: number; name: string }) => {
               </div>
             </div>
           </div>
-
-          <!-- Toaster shows server flash messages as toasts on mount -->
-
+          
           <div class="mt-8 flex flex-col w-full">
             <div class="rounded-md border shadow overflow-hidden">
               <div class="w-full overflow-x-auto">

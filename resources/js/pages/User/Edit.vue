@@ -3,9 +3,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 import { Head, Link, useForm, usePage } from "@inertiajs/vue3";
 import InputError from "@/components/InputError.vue";
 import { Trash2 } from "lucide-vue-next";
-
 import { ref, computed, reactive } from "vue";
-
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
