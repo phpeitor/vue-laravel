@@ -62,6 +62,7 @@ import { Check, ChevronsUpDown } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -311,6 +312,15 @@ const getMessagePlainText = (m: MessageRow): string => {
 
 /** Devuelve HTML final listo para v-html según el tipo de mensaje */
 const getMessageHtml = (m: MessageRow): string => {
+  if ((m.item_type ?? '').toLowerCase() === 'image') {
+    const rawUrl = (m.item_content ?? '').trim()
+    const safeUrl = rawUrl.replace(/"/g, '&quot;')
+
+    if (!safeUrl) return ''
+
+    return `<img src="${safeUrl}" alt="Imagen" class="max-h-72 w-auto rounded-lg border object-cover" loading="lazy" />`
+  }
+
   if (m.item_type === 'referral') {
     return formatReferral(m.item_content ?? '')
   }
@@ -1117,6 +1127,12 @@ const draftHtml = ref('')
 const draftEditorRef = ref<any>(null)
 const closingThreadId = ref<number | null>(null)
 const showEmojiPickerChat = ref(false)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const imagePreviewOpen = ref(false)
+const imagePreviewUrl = ref('')
+const imageFile = ref<File | null>(null)
+const imageFileName = ref('')
+const sendingImage = ref(false)
 
 const toggleEmojiPickerChat = () => {
   if (draftDisabled.value) return
@@ -1136,6 +1152,140 @@ const addEmojiToDraft = (emoji: any) => {
   draftEditorRef.value?.insertText?.(emojiChar)
   showEmojiPickerChat.value = false
 }
+
+const buildImageFileName = (file: File): string => {
+  const original = file.name || 'image.jpg'
+  const namePart = original.includes('.') ? original.slice(0, original.lastIndexOf('.')) : original
+  const extPart = original.includes('.') ? original.slice(original.lastIndexOf('.') + 1) : 'jpg'
+  const base = namePart.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+  const ext = extPart.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const timestamp = Date.now()
+  return `msg_${timestamp}_${base || 'image'}.${ext}`
+}
+
+const clearImageDraft = () => {
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+  }
+  imagePreviewUrl.value = ''
+  imageFile.value = null
+  imageFileName.value = ''
+  if (imageInputRef.value) {
+    imageInputRef.value.value = ''
+  }
+}
+
+const openAttachPicker = () => {
+  if (draftDisabled.value) return
+  imageInputRef.value?.click()
+}
+
+const onImageSelected = (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    toast({
+      title: 'Archivo no permitido',
+      description: 'Solo se permiten imagenes.',
+      variant: 'destructive',
+    })
+    clearImageDraft()
+    return
+  }
+
+  const maxBytes = 2 * 1024 * 1024
+  if (file.size > maxBytes) {
+    toast({
+      title: 'Imagen demasiado pesada',
+      description: 'El tamano maximo es 2MB.',
+      variant: 'destructive',
+    })
+    clearImageDraft()
+    return
+  }
+
+  clearImageDraft()
+  imageFile.value = file
+  imageFileName.value = buildImageFileName(file)
+  imagePreviewUrl.value = URL.createObjectURL(file)
+  imagePreviewOpen.value = true
+}
+
+const imagePayloadPreview = computed(() => {
+  const userId = (page.props.auth as any)?.user?.id ?? null
+  const message = `${window.location.origin}/storage/messages_image/${imageFileName.value || 'image.jpg'}`
+
+  return JSON.stringify(
+    {
+      message,
+      messageType: 'image',
+      userId: String(userId ?? ''),
+    },
+    null,
+    2
+  )
+})
+
+const sendAttachedImage = async () => {
+  if (!activeThreadId.value || !imageFile.value) return
+  if (isThreadClosed.value) return
+
+  sendingImage.value = true
+
+  const threadId = activeThreadId.value
+  const optimisticId = `tmp-img-${Date.now()}`
+  const socketId = (window as any).Echo?.socketId?.()
+  const optimisticUrl = `${window.location.origin}/storage/messages_image/${imageFileName.value}`
+
+  messagesList.value.push({
+    message_id: -1,
+    thread_id: threadId,
+    item_type: 'image',
+    item_content: optimisticUrl,
+    message_create_date: new Date().toISOString(),
+    origin: 'APP',
+    external_id: optimisticId,
+  } as any)
+
+  nextTick(() => scrollToBottom())
+
+  try {
+    const formData = new FormData()
+    formData.append('messageType', 'image')
+    formData.append('userId', String((page.props.auth as any)?.user?.id ?? ''))
+    formData.append('fileName', imageFileName.value)
+    formData.append('image', imageFile.value)
+
+    await axios.post(`/api/chat/threads/${threadId}/reply`, formData, {
+      headers: {
+        ...(socketId ? { 'X-Socket-Id': socketId } : {}),
+      },
+    })
+
+    imagePreviewOpen.value = false
+    clearImageDraft()
+  } catch (e: any) {
+    const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
+    if (idx >= 0) messagesList.value.splice(idx, 1)
+
+    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar la imagen'
+    toast({
+      title: 'No se pudo enviar',
+      description: serverMsg,
+      variant: 'destructive',
+    })
+  } finally {
+    sendingImage.value = false
+  }
+}
+
+watch(imagePreviewOpen, (open) => {
+  if (!open) {
+    clearImageDraft()
+  }
+})
 
 const sendMessageWithText = async (msg: string) => {
   if (!activeThreadId.value) return
@@ -1470,7 +1620,21 @@ const sendMessage = async () => {
               </div>
 
               <div class="flex items-center gap-2">
-                <Button variant="outline" size="icon" title="Adjuntar (mock)">
+                <input
+                  ref="imageInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="onImageSelected"
+                />
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Adjuntar imagen"
+                  :disabled="draftDisabled"
+                  @click="openAttachPicker"
+                >
                   <Paperclip class="h-5 w-5" />
                 </Button>
                 <TooltipProvider>
@@ -1807,6 +1971,50 @@ const sendMessage = async () => {
           <Button type="button" variant="outline" @click="closeOpen = false">Cancelar</Button>
           <Button type="button" :disabled="!canConfirmClose || closingThreadId === closeThreadTargetId" @click="confirmCloseThread">
             Cerrar conversación
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="imagePreviewOpen">
+      <DialogContent class="sm:max-w-[680px]">
+        <DialogHeader>
+          <DialogTitle>Previsualizar imagen</DialogTitle>
+          <DialogDescription>
+            Verifica la imagen y el payload antes de enviar al API.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <p class="text-sm font-medium">Imagen</p>
+            <div class="rounded-md border p-2 bg-muted/20">
+              <img
+                v-if="imagePreviewUrl"
+                :src="imagePreviewUrl"
+                alt="Preview"
+                class="max-h-72 w-full rounded-md object-contain"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">
+              Nombre final: {{ imageFileName }}
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-sm font-medium">Payload</p>
+            <div class="rounded-md border bg-muted p-3">
+              <pre class="max-h-72 overflow-auto text-xs leading-relaxed whitespace-pre-wrap">{{ imagePayloadPreview }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <DialogClose as-child>
+            <Button type="button" variant="outline" @click="clearImageDraft">Cancelar</Button>
+          </DialogClose>
+          <Button type="button" :disabled="sendingImage || !imageFile" @click="sendAttachedImage">
+            {{ sendingImage ? 'Enviando...' : 'Enviar' }}
           </Button>
         </DialogFooter>
       </DialogContent>
