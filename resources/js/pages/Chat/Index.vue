@@ -72,7 +72,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -1382,6 +1382,42 @@ const sendMessage = async () => {
   const msg = draftText.value.trim()
   await sendMessageWithText(msg)
 }
+
+const lightboxOpen = ref(false)
+const lightboxSrc = ref('')
+const lightboxZoom = ref(1)
+
+const openImageLightbox = (src: string) => {
+  if (!src) return
+  lightboxSrc.value = src
+  lightboxZoom.value = 1
+  lightboxOpen.value = true
+}
+
+const onMessageBodyClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  const imgEl = target?.closest('img') as HTMLImageElement | null
+  if (!imgEl) return
+
+  const src = imgEl.getAttribute('src') || ''
+  openImageLightbox(src)
+}
+
+const setLightboxZoom = (value: number) => {
+  lightboxZoom.value = Math.min(4, Math.max(0.5, Number(value.toFixed(2))))
+}
+
+const zoomInLightbox = () => setLightboxZoom(lightboxZoom.value + 0.25)
+const zoomOutLightbox = () => setLightboxZoom(lightboxZoom.value - 0.25)
+const resetLightboxZoom = () => setLightboxZoom(1)
+
+const onLightboxWheel = (event: WheelEvent) => {
+  if (event.deltaY < 0) {
+    zoomInLightbox()
+    return
+  }
+  zoomOutLightbox()
+}
 </script>
 
 <template>
@@ -1799,7 +1835,7 @@ const sendMessage = async () => {
                             : 'bg-muted text-foreground'"
                         >
                         
-                        <div class="leading-relaxed break-words" v-html="m.text"></div>
+                        <div class="leading-relaxed break-words cursor-zoom-in" v-html="m.text" @click="onMessageBodyClick"></div>
 
                         <div class="mt-1 text-[11px] opacity-70" :class="m.sender === 'me' ? 'text-right' : ''">
                          {{ m.created_at }}
@@ -2089,6 +2125,34 @@ const sendMessage = async () => {
       </DialogContent>
     </Dialog>
 
+    <Dialog v-model:open="lightboxOpen">
+      <DialogContent class="sm:max-w-[90vw] p-0 overflow-hidden">
+        <div class="relative bg-black/95 text-white">
+          <div class="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <Button type="button" variant="secondary" size="icon" @click="zoomOutLightbox">
+              <ZoomOut class="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" size="icon" @click="zoomInLightbox">
+              <ZoomIn class="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" @click="resetLightboxZoom">
+              100%
+            </Button>
+          </div>
+
+          <div class="h-[80vh] w-full overflow-auto flex items-center justify-center" @wheel.prevent="onLightboxWheel">
+            <img
+              v-if="lightboxSrc"
+              :src="lightboxSrc"
+              alt="Imagen ampliada"
+              class="max-h-[78vh] max-w-full object-contain transition-transform duration-150"
+              :style="{ transform: `scale(${lightboxZoom})` }"
+            />
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
     <Dialog v-model:open="reassignOpen">
       <DialogContent class="sm:max-w-[500px]">
         <DialogHeader>
@@ -2214,6 +2278,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
+                    @click="onMessageBodyClick"
                     v-html="getMessageHtml(m)"
                   ></div>
                 </div>
