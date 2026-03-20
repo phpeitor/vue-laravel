@@ -312,6 +312,30 @@ const getMessagePlainText = (m: MessageRow): string => {
 
 /** Devuelve HTML final listo para v-html según el tipo de mensaje */
 const getMessageHtml = (m: MessageRow): string => {
+  if ((m.item_type ?? '').toLowerCase() === 'text_uploading') {
+    const rawText = (m.item_content ?? '').trim()
+    const safeText = formatWhatsappText(rawText)
+
+    return `
+      <div class="space-y-1">
+        <div class="inline-flex items-center gap-2 text-xs opacity-80">
+          <span class="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+          <span>Enviando...</span>
+        </div>
+        <div>${safeText}</div>
+      </div>
+    `
+  }
+
+  if ((m.item_type ?? '').toLowerCase() === 'image_uploading') {
+    return `
+      <div class="inline-flex items-center gap-2">
+        <span class="inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+        <span>Subiendo imagen...</span>
+      </div>
+    `
+  }
+
   if ((m.item_type ?? '').toLowerCase() === 'image') {
     const rawUrl = (m.item_content ?? '').trim()
     const safeUrl = rawUrl.replace(/"/g, '&quot;')
@@ -1237,13 +1261,12 @@ const sendAttachedImage = async () => {
   const threadId = activeThreadId.value
   const optimisticId = `tmp-img-${Date.now()}`
   const socketId = (window as any).Echo?.socketId?.()
-  const optimisticUrl = `${window.location.origin}/storage/messages_image/${imageFileName.value}`
 
   messagesList.value.push({
     message_id: -1,
     thread_id: threadId,
-    item_type: 'image',
-    item_content: optimisticUrl,
+    item_type: 'image_uploading',
+    item_content: imageFileName.value,
     message_create_date: new Date().toISOString(),
     origin: 'APP',
     external_id: optimisticId,
@@ -1258,11 +1281,24 @@ const sendAttachedImage = async () => {
     formData.append('fileName', imageFileName.value)
     formData.append('image', imageFile.value)
 
-    await axios.post(`/api/chat/threads/${threadId}/reply`, formData, {
+    const response = await axios.post(`/api/chat/threads/${threadId}/reply`, formData, {
       headers: {
         ...(socketId ? { 'X-Socket-Id': socketId } : {}),
       },
     })
+
+    const expectedMessageId = Number(response?.data?.interaction?.id ?? 0)
+
+    // Refresca el thread para reemplazar el placeholder por la imagen real.
+    await fetchMessages(threadId)
+
+    // Si la BD tarda en reflejar el mensaje, reintenta brevemente.
+    if (expectedMessageId > 0 && !messagesList.value.some(m => Number(m.message_id) === expectedMessageId)) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await fetchMessages(threadId)
+    }
+
+    await scrollToBottom()
 
     imagePreviewOpen.value = false
     clearImageDraft()
@@ -1299,7 +1335,7 @@ const sendMessageWithText = async (msg: string) => {
   messagesList.value.push({
     message_id: -1,
     thread_id: threadId,
-    item_type: 'text',
+    item_type: 'text_uploading',
     item_content: msg,
     message_create_date: new Date().toISOString(),
     origin: 'APP',
@@ -1311,13 +1347,24 @@ const sendMessageWithText = async (msg: string) => {
   draftHtml.value = '' // limpia editor
 
   try {
-    await axios.post(`/api/chat/threads/${threadId}/reply`, {
+    const response = await axios.post(`/api/chat/threads/${threadId}/reply`, {
       message: msg,
       messageType: 'text',
       userId: (page.props.auth as any)?.user?.id ?? null,
     },{
       headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
+
+    const expectedMessageId = Number(response?.data?.interaction?.id ?? 0)
+
+    await fetchMessages(threadId)
+
+    if (expectedMessageId > 0 && !messagesList.value.some(m => Number(m.message_id) === expectedMessageId)) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await fetchMessages(threadId)
+    }
+
+    await scrollToBottom()
   } catch (e: any) {
     const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
     if (idx >= 0) messagesList.value.splice(idx, 1)
@@ -1359,26 +1406,40 @@ const sendMessage = async () => {
               <span>Chats</span>
 
               <div class="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Actualizar threads"
-                  :disabled="loadingThreads || !canFetch"
-                  @click="refreshThreads"
-                >
-                  <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
-                  <RefreshCw v-else class="h-4 w-4" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :disabled="loadingThreads || !canFetch"
+                        @click="refreshThreads"
+                      >
+                        <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
+                        <RefreshCw v-else class="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Actualizar</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Filtrar conversaciones"
-                  :class="!canUseFilters ? 'opacity-90 cursor-not-allowed' : ''"
-                  @click="onClickFilters"
-                >
-                  <Filter class="h-4 w-4" />
-                </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :class="!canUseFilters ? 'opacity-90 cursor-not-allowed' : ''"
+                        @click="onClickFilters"
+                      >
+                        <Filter class="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Filtrar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
                 <Dialog v-model:open="filtersOpen">
                   <DialogContent class="sm:max-w-[520px]">
@@ -1628,15 +1689,23 @@ const sendMessage = async () => {
                   @change="onImageSelected"
                 />
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Adjuntar imagen"
-                  :disabled="draftDisabled"
-                  @click="openAttachPicker"
-                >
-                  <Paperclip class="h-5 w-5" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :disabled="draftDisabled"
+                        @click="openAttachPicker"
+                      >
+                        <Paperclip class="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Adjuntar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger as-child>
@@ -1652,7 +1721,7 @@ const sendMessage = async () => {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Reasignar conversación</p>
+                      <p>Reasignar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1672,7 +1741,7 @@ const sendMessage = async () => {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Cerrar conversación</p>
+                      <p>Cerrar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
