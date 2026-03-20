@@ -62,6 +62,7 @@ import { Check, ChevronsUpDown } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -71,7 +72,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -311,6 +312,39 @@ const getMessagePlainText = (m: MessageRow): string => {
 
 /** Devuelve HTML final listo para v-html según el tipo de mensaje */
 const getMessageHtml = (m: MessageRow): string => {
+  if ((m.item_type ?? '').toLowerCase() === 'text_uploading') {
+    const rawText = (m.item_content ?? '').trim()
+    const safeText = formatWhatsappText(rawText)
+
+    return `
+      <div class="space-y-1">
+        <div class="inline-flex items-center gap-2 text-xs opacity-80">
+          <span class="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+          <span>Enviando...</span>
+        </div>
+        <div>${safeText}</div>
+      </div>
+    `
+  }
+
+  if ((m.item_type ?? '').toLowerCase() === 'image_uploading') {
+    return `
+      <div class="inline-flex items-center gap-2">
+        <span class="inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+        <span>Subiendo imagen...</span>
+      </div>
+    `
+  }
+
+  if ((m.item_type ?? '').toLowerCase() === 'image') {
+    const rawUrl = (m.item_content ?? '').trim()
+    const safeUrl = rawUrl.replace(/"/g, '&quot;')
+
+    if (!safeUrl) return ''
+
+    return `<img src="${safeUrl}" alt="Imagen" class="max-h-72 w-auto rounded-lg border object-cover" loading="lazy" />`
+  }
+
   if (m.item_type === 'referral') {
     return formatReferral(m.item_content ?? '')
   }
@@ -1117,6 +1151,12 @@ const draftHtml = ref('')
 const draftEditorRef = ref<any>(null)
 const closingThreadId = ref<number | null>(null)
 const showEmojiPickerChat = ref(false)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const imagePreviewOpen = ref(false)
+const imagePreviewUrl = ref('')
+const imageFile = ref<File | null>(null)
+const imageFileName = ref('')
+const sendingImage = ref(false)
 
 const toggleEmojiPickerChat = () => {
   if (draftDisabled.value) return
@@ -1137,6 +1177,152 @@ const addEmojiToDraft = (emoji: any) => {
   showEmojiPickerChat.value = false
 }
 
+const buildImageFileName = (file: File): string => {
+  const original = file.name || 'image.jpg'
+  const namePart = original.includes('.') ? original.slice(0, original.lastIndexOf('.')) : original
+  const extPart = original.includes('.') ? original.slice(original.lastIndexOf('.') + 1) : 'jpg'
+  const base = namePart.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+  const ext = extPart.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const timestamp = Date.now()
+  return `msg_${timestamp}_${base || 'image'}.${ext}`
+}
+
+const clearImageDraft = () => {
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+  }
+  imagePreviewUrl.value = ''
+  imageFile.value = null
+  imageFileName.value = ''
+  if (imageInputRef.value) {
+    imageInputRef.value.value = ''
+  }
+}
+
+const openAttachPicker = () => {
+  if (draftDisabled.value) return
+  imageInputRef.value?.click()
+}
+
+const onImageSelected = (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    toast({
+      title: 'Archivo no permitido',
+      description: 'Solo se permiten imagenes.',
+      variant: 'destructive',
+    })
+    clearImageDraft()
+    return
+  }
+
+  const maxBytes = 2 * 1024 * 1024
+  if (file.size > maxBytes) {
+    toast({
+      title: 'Imagen demasiado pesada',
+      description: 'El tamano maximo es 2MB.',
+      variant: 'destructive',
+    })
+    clearImageDraft()
+    return
+  }
+
+  clearImageDraft()
+  imageFile.value = file
+  imageFileName.value = buildImageFileName(file)
+  imagePreviewUrl.value = URL.createObjectURL(file)
+  imagePreviewOpen.value = true
+}
+
+const imagePayloadPreview = computed(() => {
+  const userId = (page.props.auth as any)?.user?.id ?? null
+  const message = `${window.location.origin}/storage/messages_image/${imageFileName.value || 'image.jpg'}`
+
+  return JSON.stringify(
+    {
+      message,
+      messageType: 'image',
+      userId: String(userId ?? ''),
+    },
+    null,
+    2
+  )
+})
+
+const sendAttachedImage = async () => {
+  if (!activeThreadId.value || !imageFile.value) return
+  if (isThreadClosed.value) return
+
+  sendingImage.value = true
+
+  const threadId = activeThreadId.value
+  const optimisticId = `tmp-img-${Date.now()}`
+  const socketId = (window as any).Echo?.socketId?.()
+
+  messagesList.value.push({
+    message_id: -1,
+    thread_id: threadId,
+    item_type: 'image_uploading',
+    item_content: imageFileName.value,
+    message_create_date: new Date().toISOString(),
+    origin: 'APP',
+    external_id: optimisticId,
+  } as any)
+
+  nextTick(() => scrollToBottom())
+
+  try {
+    const formData = new FormData()
+    formData.append('messageType', 'image')
+    formData.append('userId', String((page.props.auth as any)?.user?.id ?? ''))
+    formData.append('fileName', imageFileName.value)
+    formData.append('image', imageFile.value)
+
+    const response = await axios.post(`/api/chat/threads/${threadId}/reply`, formData, {
+      headers: {
+        ...(socketId ? { 'X-Socket-Id': socketId } : {}),
+      },
+    })
+
+    const expectedMessageId = Number(response?.data?.interaction?.id ?? 0)
+
+    // Refresca el thread para reemplazar el placeholder por la imagen real.
+    await fetchMessages(threadId)
+
+    // Si la BD tarda en reflejar el mensaje, reintenta brevemente.
+    if (expectedMessageId > 0 && !messagesList.value.some(m => Number(m.message_id) === expectedMessageId)) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await fetchMessages(threadId)
+    }
+
+    await scrollToBottom()
+
+    imagePreviewOpen.value = false
+    clearImageDraft()
+  } catch (e: any) {
+    const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
+    if (idx >= 0) messagesList.value.splice(idx, 1)
+
+    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar la imagen'
+    toast({
+      title: 'No se pudo enviar',
+      description: serverMsg,
+      variant: 'destructive',
+    })
+  } finally {
+    sendingImage.value = false
+  }
+}
+
+watch(imagePreviewOpen, (open) => {
+  if (!open) {
+    clearImageDraft()
+  }
+})
+
 const sendMessageWithText = async (msg: string) => {
   if (!activeThreadId.value) return
   if (isThreadClosed.value) return
@@ -1149,7 +1335,7 @@ const sendMessageWithText = async (msg: string) => {
   messagesList.value.push({
     message_id: -1,
     thread_id: threadId,
-    item_type: 'text',
+    item_type: 'text_uploading',
     item_content: msg,
     message_create_date: new Date().toISOString(),
     origin: 'APP',
@@ -1161,13 +1347,24 @@ const sendMessageWithText = async (msg: string) => {
   draftHtml.value = '' // limpia editor
 
   try {
-    await axios.post(`/api/chat/threads/${threadId}/reply`, {
+    const response = await axios.post(`/api/chat/threads/${threadId}/reply`, {
       message: msg,
       messageType: 'text',
       userId: (page.props.auth as any)?.user?.id ?? null,
     },{
       headers: socketId ? { 'X-Socket-Id': socketId } : {}
     })
+
+    const expectedMessageId = Number(response?.data?.interaction?.id ?? 0)
+
+    await fetchMessages(threadId)
+
+    if (expectedMessageId > 0 && !messagesList.value.some(m => Number(m.message_id) === expectedMessageId)) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await fetchMessages(threadId)
+    }
+
+    await scrollToBottom()
   } catch (e: any) {
     const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
     if (idx >= 0) messagesList.value.splice(idx, 1)
@@ -1185,12 +1382,49 @@ const sendMessage = async () => {
   const msg = draftText.value.trim()
   await sendMessageWithText(msg)
 }
+
+const lightboxOpen = ref(false)
+const lightboxSrc = ref('')
+const lightboxZoom = ref(1)
+
+const openImageLightbox = (src: string) => {
+  if (!src) return
+  lightboxSrc.value = src
+  lightboxZoom.value = 1
+  lightboxOpen.value = true
+}
+
+const onMessageBodyClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  const imgEl = target?.closest('img') as HTMLImageElement | null
+  if (!imgEl) return
+
+  const src = imgEl.getAttribute('src') || ''
+  openImageLightbox(src)
+}
+
+const setLightboxZoom = (value: number) => {
+  lightboxZoom.value = Math.min(4, Math.max(0.5, Number(value.toFixed(2))))
+}
+
+const zoomInLightbox = () => setLightboxZoom(lightboxZoom.value + 0.25)
+const zoomOutLightbox = () => setLightboxZoom(lightboxZoom.value - 0.25)
+const resetLightboxZoom = () => setLightboxZoom(1)
+
+const onLightboxWheel = (event: WheelEvent) => {
+  if (event.deltaY < 0) {
+    zoomInLightbox()
+    return
+  }
+  zoomOutLightbox()
+}
 </script>
 
 <template>
   <Head title="Chat" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="mx-auto w-full max-w-7xl p-4">
+
       <div class="grid grid-cols-1 gap-3" :class="isRestrictedRole ? 'lg:grid-cols-[360px_1fr]' : 'lg:grid-cols-[64px_360px_1fr]'">
         <!-- Filter rail (solo para roles no restringidos) -->
         <div v-if="!isRestrictedRole" class="hidden lg:flex flex-col items-center gap-2 pt-4">
@@ -1208,26 +1442,40 @@ const sendMessage = async () => {
               <span>Chats</span>
 
               <div class="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Actualizar threads"
-                  :disabled="loadingThreads || !canFetch"
-                  @click="refreshThreads"
-                >
-                  <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
-                  <RefreshCw v-else class="h-4 w-4" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :disabled="loadingThreads || !canFetch"
+                        @click="refreshThreads"
+                      >
+                        <Loader2 v-if="loadingThreads" class="h-4 w-4 animate-spin" />
+                        <RefreshCw v-else class="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Actualizar</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Filtrar conversaciones"
-                  :class="!canUseFilters ? 'opacity-90 cursor-not-allowed' : ''"
-                  @click="onClickFilters"
-                >
-                  <Filter class="h-4 w-4" />
-                </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :class="!canUseFilters ? 'opacity-90 cursor-not-allowed' : ''"
+                        @click="onClickFilters"
+                      >
+                        <Filter class="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Filtrar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
                 <Dialog v-model:open="filtersOpen">
                   <DialogContent class="sm:max-w-[520px]">
@@ -1398,7 +1646,7 @@ const sendMessage = async () => {
                               <span v-if="t.origin" class="inline-flex px-1 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded font-semibold">
                                 {{ getThreadOriginLabel(t.origin) }}
                               </span>
-                              <span v-if="t.thread_status === 'OPEN' && t.create_date" class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
+                              <span v-if="t.thread_status === 'OPEN' && t.create_date"  class="inline-flex px-1 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded whitespace-nowrap">
                                 ⏱ {{ getThreadElapsedTime(t) }}
                               </span>
                               <span
@@ -1410,7 +1658,7 @@ const sendMessage = async () => {
                               >
                                 ⏳ {{ getThreadRemainingTime(t) }}
                               </span>
-                            </div>
+                            </div>                            
                           </div>
                         </div>
 
@@ -1469,9 +1717,31 @@ const sendMessage = async () => {
               </div>
 
               <div class="flex items-center gap-2">
-                <Button variant="outline" size="icon" title="Adjuntar (mock)">
-                  <Paperclip class="h-5 w-5" />
-                </Button>
+                <input
+                  ref="imageInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="onImageSelected"
+                />
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        :disabled="draftDisabled"
+                        @click="openAttachPicker"
+                      >
+                        <Paperclip class="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Adjuntar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger as-child>
@@ -1487,7 +1757,7 @@ const sendMessage = async () => {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Reasignar conversación</p>
+                      <p>Reasignar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1507,7 +1777,7 @@ const sendMessage = async () => {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Cerrar conversación</p>
+                      <p>Cerrar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1565,7 +1835,7 @@ const sendMessage = async () => {
                             : 'bg-muted text-foreground'"
                         >
                         
-                        <div class="leading-relaxed break-words" v-html="m.text"></div>
+                        <div class="leading-relaxed break-words cursor-zoom-in" v-html="m.text" @click="onMessageBodyClick"></div>
 
                         <div class="mt-1 text-[11px] opacity-70" :class="m.sender === 'me' ? 'text-right' : ''">
                          {{ m.created_at }}
@@ -1811,6 +2081,78 @@ const sendMessage = async () => {
       </DialogContent>
     </Dialog>
 
+    <Dialog v-model:open="imagePreviewOpen">
+      <DialogContent class="sm:max-w-[680px]">
+        <DialogHeader>
+          <DialogTitle>Previsualizar imagen</DialogTitle>
+          <DialogDescription>
+            Verifica la imagen y el payload antes de enviar al API.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <p class="text-sm font-medium">Imagen</p>
+            <div class="rounded-md border p-2 bg-muted/20">
+              <img
+                v-if="imagePreviewUrl"
+                :src="imagePreviewUrl"
+                alt="Preview"
+                class="max-h-72 w-full rounded-md object-contain"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">
+              Nombre final: {{ imageFileName }}
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-sm font-medium">Payload</p>
+            <div class="rounded-md border bg-muted p-3">
+              <pre class="max-h-72 overflow-auto text-xs leading-relaxed whitespace-pre-wrap">{{ imagePayloadPreview }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <DialogClose as-child>
+            <Button type="button" variant="outline" @click="clearImageDraft">Cancelar</Button>
+          </DialogClose>
+          <Button type="button" :disabled="sendingImage || !imageFile" @click="sendAttachedImage">
+            {{ sendingImage ? 'Enviando...' : 'Enviar' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="lightboxOpen">
+      <DialogContent class="sm:max-w-[90vw] p-0 overflow-hidden">
+        <div class="relative bg-black/95 text-white">
+          <div class="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <Button type="button" variant="secondary" size="icon" @click="zoomOutLightbox">
+              <ZoomOut class="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" size="icon" @click="zoomInLightbox">
+              <ZoomIn class="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" @click="resetLightboxZoom">
+              100%
+            </Button>
+          </div>
+
+          <div class="h-[80vh] w-full overflow-auto flex items-center justify-center" @wheel.prevent="onLightboxWheel">
+            <img
+              v-if="lightboxSrc"
+              :src="lightboxSrc"
+              alt="Imagen ampliada"
+              class="max-h-[78vh] max-w-full object-contain transition-transform duration-150"
+              :style="{ transform: `scale(${lightboxZoom})` }"
+            />
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
     <Dialog v-model:open="reassignOpen">
       <DialogContent class="sm:max-w-[500px]">
         <DialogHeader>
@@ -1936,6 +2278,7 @@ const sendMessage = async () => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
+                    @click="onMessageBodyClick"
                     v-html="getMessageHtml(m)"
                   ></div>
                 </div>

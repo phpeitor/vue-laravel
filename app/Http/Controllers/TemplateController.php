@@ -287,6 +287,67 @@ class TemplateController extends Controller
         }
     }
 
+    public function sync(Request $request)
+    {
+        $validated = $request->validate([
+            'companyId' => 'required|integer',
+            'communicationChannelId' => 'required|integer',
+        ]);
+
+        $payload = [
+            'companyId' => $validated['companyId'],
+            'communicationChannelId' => $validated['communicationChannelId'],
+        ];
+
+        try {
+            $response = Http::withOptions([
+                'verify' => false,
+            ])->post(config('services.whatsapp.sync_url'), $payload);
+
+            $responseData = $response->json();
+
+            if ($response->successful()) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Sincronizacion completada correctamente.',
+                    ]);
+                }
+
+                return redirect()->route('templates.index', [
+                    'companyId' => $validated['companyId'],
+                    'communicationChannelId' => $validated['communicationChannelId'],
+                ])->with('success', 'Sincronizacion completada correctamente.');
+            }
+
+            $errorMessage = $responseData['message'] ?? 'No se pudo sincronizar las plantillas.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessage,
+                ], 422);
+            }
+
+            return back()->withErrors([
+                'toast' => $errorMessage,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al sincronizar plantillas: ' . $e->getMessage());
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al conectarse con el API de sincronizacion.',
+                ], 500);
+            }
+
+            return back()->withErrors([
+                'toast' => 'Error al conectarse con el API de sincronizacion.',
+            ]);
+        }
+    }
+
     private function validateTemplateInput(Request $request): array
     {
         return $request->validate([

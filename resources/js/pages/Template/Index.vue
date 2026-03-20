@@ -1,10 +1,12 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue'
 import MagnifyingGlass from "@/components/Icons/MagnifyingGlass.vue";
+import axios from 'axios'
 import { Trash2, FlaskConical, Send, Phone, MessageCircle, Instagram, Facebook } from 'lucide-vue-next'
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import { h, ref, watch } from 'vue'
 import { useToast } from '@/components/ui/toast'
+import { toast as sonnerToast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 import {
@@ -59,7 +61,7 @@ import {
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-vue-next'
+import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-vue-next'
 
 const breadcrumbs = [
   {
@@ -119,6 +121,14 @@ const channelId = ref(props.selectedChannelId ?? '')
 const globalFilter = ref('');
 const sorting = ref([{ id: 'id', desc: true }]);
 const pagination = ref({ pageIndex: 0, pageSize: 10 });
+const expandedTemplateDetails = ref({});
+
+function setTemplateDetailsOpen(templateId, isOpen) {
+  expandedTemplateDetails.value = {
+    ...expandedTemplateDetails.value,
+    [templateId]: isOpen,
+  }
+}
 
 const columns = [
   {
@@ -165,6 +175,8 @@ const columns = [
     id: 'components',
     header: 'Componentes',
     cell: ({ row }) => {
+      const templateId = row.original.id
+      const isDetailsOpen = !!expandedTemplateDetails.value[templateId]
       const components = row.original.components || [];
 
       const typeMap = {
@@ -267,16 +279,23 @@ const columns = [
       return h('div', { class: 'p-3 rounded-xl border shadow-sm bg-muted text-left' }, [
         h('div', { class: 'flex flex-col' }, [
           h('div', { class: 'flex items-center justify-between gap-2' }, [
-            h(Collapsible, {}, () => [
+            h(Collapsible, {
+              open: isDetailsOpen,
+              'onUpdate:open': (open) => setTemplateDetailsOpen(templateId, open),
+            }, () => [
               h('div', { class: 'flex-1' }, [
                 h(CollapsibleTrigger, { asChild: true }, () =>
                   h('button', { class: 'text-sm text-foreground flex items-center gap-1' }, [
-                    'Ver detalles',
-                    h(ChevronDown, { class: 'w-4 h-4 text-muted-foreground' })
+                    isDetailsOpen ? 'Ocultar detalles' : 'Ver detalles',
+                    h(ChevronDown, {
+                      class: `w-4 h-4 text-muted-foreground transition-transform duration-200 ${isDetailsOpen ? 'rotate-180' : ''}`
+                    })
                   ])
                 )
               ]),
-              h(CollapsibleContent, {}, () =>
+              h(CollapsibleContent, {
+                class: 'overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:duration-200 data-[state=closed]:duration-150'
+              }, () =>
                 h('div', { class: 'mt-2 max-h-48 overflow-auto pr-2' }, children)
               )
             ])
@@ -362,6 +381,7 @@ const table = useVueTable({
 })
 
 const showAlert = ref(false)
+const syncingTemplates = ref(false)
 
 function goToCreate() {
   if (!companyId.value || !channelId.value) {
@@ -375,6 +395,48 @@ function goToCreate() {
   })
 
   router.visit(url)
+}
+
+function syncTemplates() {
+  if (!companyId.value || !channelId.value) {
+    showAlert.value = true
+    return
+  }
+
+  syncingTemplates.value = true
+
+  const syncPromise = axios.post(route('templates.sync'), {
+      companyId: Number(companyId.value),
+      communicationChannelId: Number(channelId.value),
+    }, {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    .then((response) => {
+      const message = response?.data?.message || 'Sincronizacion completada correctamente.'
+
+      return new Promise((resolve) => {
+        router.reload({
+          preserveScroll: true,
+          only: ['templates'],
+          onFinish: () => resolve(message),
+        })
+      })
+    })
+    .catch((error) => {
+      const message = error?.response?.data?.message || 'No se pudo sincronizar plantillas'
+      throw new Error(message)
+    })
+    .finally(() => {
+      syncingTemplates.value = false
+    })
+
+  sonnerToast.promise(syncPromise, {
+    loading: 'Sincronizando plantillas...',
+    success: (message) => message,
+    error: (error) => error?.message || 'No se pudo sincronizar plantillas',
+  })
 }
 
 const openDeleteDialog = ref(false)
@@ -581,6 +643,24 @@ function soloNumeros(e) {
                   </TooltipTrigger>
                   <TooltipContent side="top" align="center">
                     <span>Crear</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      variant="outline"
+                      class="h-7 w-7 p-0"
+                      :disabled="syncingTemplates"
+                      @click="syncTemplates"
+                    >
+                      <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': syncingTemplates }" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center">
+                    <span>{{ syncingTemplates ? 'Sincronizando...' : 'Sincronizar' }}</span>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

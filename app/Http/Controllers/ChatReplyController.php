@@ -7,16 +7,61 @@ use App\Models\Thread;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ChatReplyController extends Controller
 {
     public function store(Request $request, int $threadId)
     {
-        $data = $request->validate([
-            'message'     => ['required', 'string'],
-            'messageType' => ['required', 'string'], // "text"
-            'userId'      => ['required', 'integer'],
-        ]);
+        $messageType = strtolower((string) $request->input('messageType', 'text'));
+
+        $rules = [
+            'messageType' => ['required', 'string', 'in:text,image'],
+            'userId' => ['required', 'integer'],
+        ];
+
+        if ($messageType === 'image') {
+            $rules['image'] = ['required', 'image', 'max:2048'];
+            $rules['fileName'] = ['nullable', 'string', 'max:180'];
+        } else {
+            $rules['message'] = ['required', 'string'];
+        }
+
+        $validated = $request->validate($rules);
+
+        $data = [
+            'messageType' => $messageType,
+            'userId' => (int) $validated['userId'],
+        ];
+
+        if ($messageType === 'image') {
+            $file = $request->file('image');
+
+            $originalName = (string) ($validated['fileName'] ?? ('msg_' . now()->format('Ymd_His') . '_' . uniqid()));
+            $nameInfo = pathinfo($originalName);
+
+            $baseName = (string) ($nameInfo['filename'] ?? $originalName);
+            $baseName = preg_replace('/[^A-Za-z0-9_-]/', '_', $baseName);
+            $baseName = trim((string) $baseName, '_');
+            $baseName = $baseName !== '' ? $baseName : ('msg_' . now()->format('Ymd_His') . '_' . uniqid());
+
+            $extension = strtolower((string) ($nameInfo['extension'] ?? ''));
+            if ($extension === '') {
+                $extension = strtolower((string) $file->getClientOriginalExtension());
+            }
+            if ($extension === '') {
+                $extension = 'jpg';
+            }
+
+            $fileName = $baseName . '.' . $extension;
+
+            $path = $file->storeAs('messages_image', $fileName, 'public');
+            $imageUrl = url(Storage::url($path));
+
+            $data['message'] = $imageUrl;
+        } else {
+            $data['message'] = (string) $validated['message'];
+        }
 
         $base = rtrim((string) config('services.chat.thread_base_url'), '/');
         if ($base === '') {
