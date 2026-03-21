@@ -42,6 +42,15 @@ class CampaignController extends Controller
         $recipientsPerPage = 15;
 
         $campaigns = Campaign::query()
+            ->leftJoin('companies as cc', 'campaigns.company_id', '=', 'cc.id')
+            ->leftJoin('communication_channels as ch', 'campaigns.communication_channel_id', '=', 'ch.id')
+            ->leftJoin('message_templates as mt', 'campaigns.template_id', '=', 'mt.id')
+            ->select([
+                'campaigns.*',
+                'cc.company_name as company_name',
+                'ch.channel_name as channel_name',
+                'mt.name as template_name',
+            ])
             ->withCount([
                 'logs',
                 'recipients',
@@ -49,7 +58,7 @@ class CampaignController extends Controller
                 'recipients as failed_count' => fn ($q) => $q->where('status', 'FAILED'),
                 'recipients as pending_count' => fn ($q) => $q->where('status', 'PENDING'),
             ])
-            ->orderByDesc('id')
+            ->orderByDesc('campaigns.id')
             ->paginate($perPage)
             ->withQueryString(); 
 

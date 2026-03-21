@@ -116,10 +116,10 @@ onMounted(() => {
             <Tooltip>
                 <TooltipTrigger as-child>
                     <Button
-                        class="fixed bottom-6 right-6 z-[60] h-12 w-12 rounded-full shadow-lg"
+                        class="fixed bottom-6 right-6 z-[60] h-11 w-11 p-0.5 rounded-full shadow-lg [&_svg]:size-6"
                         @click="openIssueDialog = true"
                     >
-                        <Bug class="h-5 w-5" />
+                        <Bug />
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" align="center">
