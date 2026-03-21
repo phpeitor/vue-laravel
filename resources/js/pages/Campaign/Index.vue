@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
-import { FileSpreadsheet, Download, CalendarRange, Clock, CheckCircle2, XCircle, Loader2, SquarePlus } from 'lucide-vue-next'
+import { FileSpreadsheet, Download, CalendarRange, Clock, CheckCircle2, XCircle, Loader2, SquarePlus, Phone } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAppearance } from '@/composables/useAppearance'
@@ -29,6 +29,9 @@ type Campaign = {
   company_id: number
   communication_channel_id: number
   template_id: number
+  company_name?: string | null
+  channel_name?: string | null
+  template_name?: string | null
   start_date: string
   end_date: string
   start_time?: string | null
@@ -152,7 +155,26 @@ const openHsmStatus = async (providerMessageId: string | null) => {
 }
 
 const page = usePage<PageProps>()
-const { statusVariant, badgeClass, statusBadgeClass } = useAppearance()
+const { statusBadgeClass } = useAppearance()
+
+const campaignStatusClass = (s: unknown): string => {
+  const v = String(s ?? '').trim().toUpperCase()
+
+  if (['FINALLY', 'SENT', 'READY'].includes(v)) {
+    return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300'
+  }
+  if (['RUNNING', 'PROCESSING', 'SENDING', 'UPLOADED', 'SCHEDULED'].includes(v)) {
+    return 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
+  }
+  if (['FAILED', 'FINALLY_FAILED'].includes(v)) {
+    return 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300'
+  }
+  if (v === 'PENDING') {
+    return 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300'
+  }
+
+  return 'border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-500/30 dark:bg-zinc-500/15 dark:text-zinc-300'
+}
 
 const campaignsPaginator = computed(() => page.props.campaigns)
 const campaigns = computed(() => campaignsPaginator.value.data)
@@ -184,11 +206,11 @@ const logIcon = (type: string) => {
 
 const logBadgeClass = (type: string) => {
   const t = (type ?? '').toUpperCase()
-  if (t === 'FINISHED') return 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-  if (t === 'PROCESSING') return 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-  if (t === 'UPLOAD') return 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-  if (t === 'FAILED') return 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-  return 'bg-muted text-foreground border border-border'
+  if (t === 'FINISHED') return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300'
+  if (t === 'PROCESSING') return 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300'
+  if (t === 'UPLOAD') return 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300'
+  if (t === 'FAILED') return 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300'
+  return 'border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-500/30 dark:bg-zinc-500/15 dark:text-zinc-300'
 }
 
 watch(
@@ -221,6 +243,13 @@ const parseMaybeJson = (v: any) => {
     }
   }
   return v
+}
+
+const hasVariables = (variables: any) => {
+  const parsed = parseMaybeJson(variables)
+  if (!parsed) return false
+  if (typeof parsed === 'object' && Object.keys(parsed).length === 0) return false
+  return true
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -359,11 +388,11 @@ const goToRecipientsPage = (url: string | null) => {
               <CardHeader>
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <CardTitle class="text-lg">#{{ c.id }} — {{ c.name }}</CardTitle>
+                    <CardTitle class="text-lg">{{ c.name }}</CardTitle>
                     <CardDescription>{{ c.description || 'Sin descripción' }}</CardDescription>
                   </div>
 
-                  <Badge :variant="statusVariant(c.status)" class="border" :class="badgeClass(c.status)">
+                  <Badge variant="outline" class="border" :class="campaignStatusClass(c.status)">
                     {{ c.status }}
                   </Badge>
                 </div>
@@ -371,9 +400,9 @@ const goToRecipientsPage = (url: string | null) => {
 
               <CardContent class="space-y-2 text-sm">
                 <div class="flex flex-wrap gap-2">
+                  <Badge variant="outline">{{ c.company_name || c.company_id }}: {{ c.channel_name || c.communication_channel_id }}</Badge>
                   <Badge variant="outline">Tipo: {{ c.type }}</Badge>
-                  <Badge variant="outline">Template: {{ c.template_id }}</Badge>
-                  <Badge variant="outline">Canal: {{ c.communication_channel_id }}</Badge>
+                  <Badge variant="outline">Template: {{ c.template_name || c.template_id }}</Badge>
                 </div>
 
                 <div class="grid gap-2 text-sm">
@@ -499,7 +528,6 @@ const goToRecipientsPage = (url: string | null) => {
                             <Badge variant="outline" class="border" :class="logBadgeClass(l.type)">
                               {{ l.type }}
                             </Badge>
-                            <span class="text-sm font-medium">#{{ l.id }}</span>
                           </div>
 
                           <span class="text-xs text-muted-foreground">
@@ -551,7 +579,7 @@ const goToRecipientsPage = (url: string | null) => {
                   <CardContent class="space-y-3">
                     <div class="flex items-center justify-between text-sm">
                       <span class="text-muted-foreground">Status</span>
-                      <Badge class="border" :class="badgeClass(selectedCampaign?.status ?? '')">
+                      <Badge variant="outline" class="border" :class="campaignStatusClass(selectedCampaign?.status ?? '')">
                         {{ selectedCampaign?.status }}
                       </Badge>
                     </div>
@@ -622,10 +650,10 @@ const goToRecipientsPage = (url: string | null) => {
                   <CardHeader>
                     <div class="flex items-start justify-between gap-3">
                       <div>
-                        <CardTitle class="text-base">#{{ r.id }} — {{ r.phone }}</CardTitle>
+                        <CardTitle class="text-base">{{ r.phone }}</CardTitle>
                       </div>
 
-                      <Badge :variant="statusVariant(r.status)" class="border" :class="badgeClass(r.status)">
+                      <Badge variant="outline" class="border" :class="campaignStatusClass(r.status)">
                         {{ r.status }}
                       </Badge>
                     </div>
@@ -652,7 +680,7 @@ const goToRecipientsPage = (url: string | null) => {
                       {{ r.error_message }}
                     </div>
 
-                    <pre class="text-xs bg-muted rounded-md p-3 overflow-auto">{{ parseMaybeJson(r.variables) ? JSON.stringify(parseMaybeJson(r.variables), null, 2) : '' }}</pre>
+                    <pre v-if="hasVariables(r.variables)" class="text-xs bg-muted rounded-md p-3 overflow-auto">{{ JSON.stringify(parseMaybeJson(r.variables), null, 2) }}</pre>
                   </CardContent>
                 </Card>
               </div>
