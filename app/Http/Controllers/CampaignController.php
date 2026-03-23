@@ -353,7 +353,6 @@ class CampaignController extends Controller
             return is_string($v) ? trim(mb_strtolower($v)) : '';
         }, $headerRow));
 
-        // ✅ Debe existir al menos la columna telefono
         if (count($headerRow) < 1) {
             throw ValidationException::withMessages([
                 'file' => 'El Excel debe tener encabezados en la fila 1.',
@@ -366,7 +365,6 @@ class CampaignController extends Controller
             ]);
         }
 
-        // ✅ Esperado: 1 + variables (si variables=0 => solo telefono)
         $expectedColumns = 1 + max(0, (int)$variableCount);
 
         if (count($headerRow) !== $expectedColumns) {
@@ -376,15 +374,55 @@ class CampaignController extends Controller
                 ]);
             }
 
-            // variableCount = 0
             throw ValidationException::withMessages([
                 'file' => 'El Excel debe tener 1 columna: "telefono". (La plantilla no tiene variables)',
+            ]);
+        }
+
+        $highestDataRow = (int) $sheet->getHighestDataRow();
+        $records = 0;
+
+        for ($row = 2; $row <= $highestDataRow; $row++) {
+            $rowValues = $sheet->rangeToArray("A{$row}:{$highestColumn}{$row}", null, true, false)[0] ?? [];
+
+            $hasData = collect($rowValues)->contains(function ($value) {
+                if ($value === null) {
+                    return false;
+                }
+
+                return trim((string) $value) !== '';
+            });
+
+            if (! $hasData) {
+                continue;
+            }
+
+            $records++;
+
+            if ($records > 1500) {
+                throw ValidationException::withMessages([
+                    'file' => 'El archivo Excel no puede tener más de 1500 registros.',
+                ]);
+            }
+
+            $phone = preg_replace('/\D+/', '', (string) ($rowValues[0] ?? ''));
+
+            if (! $this->isValidPhone($phone)) {
+                throw ValidationException::withMessages([
+                    'file' => "El teléfono en la fila {$row} no es válido. Debe empezar con 519 y tener 11 dígitos (ejemplo: 51942890820).",
+                ]);
+            }
+        }
+
+        if ($records === 0) {
+            throw ValidationException::withMessages([
+                'file' => 'El Excel no contiene registros para procesar.',
             ]);
         }
     }
 
     private function isValidPhone(string $phone): bool{
-        return (bool) preg_match('/^[0-9]{9,15}$/', $phone);
+        return (bool) preg_match('/^519\d{8}$/', $phone);
     }
 
     public function testSendFromRecipient(CampaignRecipient $recipient, WhatsappHsmSender $sender){
@@ -410,8 +448,7 @@ class CampaignController extends Controller
             }
             return $s;
         };
-
-        // Headers (en el orden que devuelve la function)
+        
         $headers = [
             'id', 'name', 'description', 'company_name', 'channel_name',
             'start_date', 'end_date', 'start_time', 'status', 'type',
