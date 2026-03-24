@@ -100,6 +100,28 @@ const formatPE = (utc: string | null) => {
   }).format(d)
 }
 
+const formatPEPlus5 = (utc: string | null) => {
+  if (!utc) return ''
+
+  // Mantiene misma normalizacion que formatPE, pero suma +5h de forma explicita
+  const normalized = utc.includes('T') ? utc : utc.replace(' ', 'T')
+  const withTZ = /Z$|[+\-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
+
+  const d = new Date(withTZ)
+  const plus5 = new Date(d.getTime() + (5 * 60 * 60 * 1000))
+
+  return new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(plus5)
+}
+
 /** Escapa caracteres especiales HTML para uso seguro en atributos y contenido */
 const escHtml = (s: unknown): string =>
   String(s ?? '')
@@ -179,6 +201,7 @@ export function useTextFormat() {
     toTitleCase,
     displayThreadName,
     formatPE,
+    formatPEPlus5,
     escHtml,
     formatReferral,
   }

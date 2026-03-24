@@ -2,11 +2,20 @@
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
-import { FileSpreadsheet, Download, CalendarRange, Clock, CheckCircle2, XCircle, Loader2, SquarePlus, Phone } from 'lucide-vue-next'
+import { FileSpreadsheet, Download, CalendarRange, Clock, CheckCircle2, XCircle, Loader2, SquarePlus, Phone, Search, X } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/composables/useAppearance'
+import { useTextFormat } from '@/composables/useTextFormat'
+import { useWhatsappFormatter } from '@/composables/useWhatsappFormatter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   Card,
   CardContent,
@@ -90,6 +99,7 @@ type PageProps = {
   campaign_logs: CampaignLog[]
   campaign_recipients: Paginator<CampaignRecipient>
   selectedCampaignId: number | null
+  recipient_phone?: string
 }
 
 type HsmStatusItem = {
@@ -102,11 +112,22 @@ type HsmStatusResponse =
   | { success: true; memberData: { phone: string; statusList: HsmStatusItem[] } }
   | { success: false; message: string }
 
+type TemplatePreviewResponse = {
+  components?: any[]
+}
+
 const statusModalOpen = ref(false)
 const statusLoading = ref(false)
 const statusError = ref<string | null>(null)
 const statusPayload = ref<{ phone: string; list: HsmStatusItem[] } | null>(null)
 const statusMessageId = ref<string | null>(null)
+
+const templateModalOpen = ref(false)
+const templateLoading = ref(false)
+const templateError = ref<string | null>(null)
+const templateComponents = ref<any[]>([])
+const templateLabel = ref('')
+const templateDynamicVariables = ref<Record<string, string>>({})
 
 let statusAbort: AbortController | null = null
 
@@ -154,8 +175,78 @@ const openHsmStatus = async (providerMessageId: string | null) => {
   }
 }
 
+const normalizeRecipientVariables = (variables: any): Record<string, string> => {
+  const parsed = parseMaybeJson(variables)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+
+  const normalized: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    normalized[String(key)] = value == null ? '' : String(value)
+  }
+  return normalized
+}
+
+const openTemplatePreview = async (
+  templateId: number | null | undefined,
+  templateName?: string | null,
+  variables?: any,
+) => {
+  if (!templateId) return
+
+  templateModalOpen.value = true
+  templateLoading.value = true
+  templateError.value = null
+  templateComponents.value = []
+  templateDynamicVariables.value = normalizeRecipientVariables(variables)
+  templateLabel.value = templateName ?? `Template #${templateId}`
+
+  try {
+    const res = await fetch(`/campaigns/templates/${templateId}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    })
+
+    if (!res.ok) {
+      templateError.value = 'No se pudo obtener el contenido de la plantilla.'
+      return
+    }
+
+    const json = (await res.json()) as TemplatePreviewResponse
+    templateComponents.value = Array.isArray(json.components) ? json.components : []
+  } catch {
+    templateError.value = 'No se pudo obtener el contenido de la plantilla.'
+  } finally {
+    templateLoading.value = false
+  }
+}
+
 const page = usePage<PageProps>()
 const { statusBadgeClass } = useAppearance()
+const { formatPEPlus5 } = useTextFormat()
+const { formatWhatsappText } = useWhatsappFormatter()
+
+const formatTemplateWithVariables = (text: unknown) => {
+  const raw = String(text ?? '')
+  const variables = templateDynamicVariables.value
+  const replaced = raw.replace(/\{\{\s*(\d+)\s*\}\}/g, (match, idx: string) => {
+    return Object.prototype.hasOwnProperty.call(variables, idx)
+      ? `*${variables[idx]}*`
+      : match
+  })
+
+  return formatWhatsappText(replaced)
+}
+
+const openTemplatePreviewFromRecipient = (recipient: CampaignRecipient) => {
+  if (!selectedCampaign.value?.template_id) return
+  if (!hasVariables(recipient.variables)) return
+
+  openTemplatePreview(
+    selectedCampaign.value.template_id,
+    selectedCampaign.value.template_name || String(selectedCampaign.value.template_id),
+    recipient.variables,
+  )
+}
 
 const campaignStatusClass = (s: unknown): string => {
   const v = String(s ?? '').trim().toUpperCase()
@@ -185,6 +276,23 @@ const logsAll = computed(() => (page.props.campaign_logs ?? []) as CampaignLog[]
 const recipientsPaginator = computed(() => page.props.campaign_recipients)
 const recipientsAll = computed(() => recipientsPaginator.value.data ?? [])
 const recipientsLinks = computed(() => recipientsPaginator.value.links ?? [])
+
+const templateHeaderComponent = computed(() =>
+  templateComponents.value.find((c) => String(c?.type ?? '').toUpperCase() === 'HEADER') ?? null
+)
+
+const templateBodyComponent = computed(() =>
+  templateComponents.value.find((c) => String(c?.type ?? '').toUpperCase() === 'BODY') ?? null
+)
+
+const templateFooterComponent = computed(() =>
+  templateComponents.value.find((c) => String(c?.type ?? '').toUpperCase() === 'FOOTER') ?? null
+)
+
+const templateButtons = computed(() => {
+  const comp = templateComponents.value.find((c) => String(c?.type ?? '').toUpperCase() === 'BUTTONS')
+  return Array.isArray(comp?.buttons) ? comp.buttons : []
+})
 
 const initialSelected = (page.props.selectedCampaignId ?? null) as number | null
 const selectedCampaignId = ref<number | null>(initialSelected ?? (campaigns.value[0]?.id ?? null))
@@ -277,6 +385,14 @@ const formatDate = (value: string) => {
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 
+const formatDateRange = (start: string, end: string) => {
+  const startFormatted = formatDate(start)
+  const endFormatted = formatDate(end)
+  return startFormatted === endFormatted
+    ? startFormatted
+    : `${startFormatted} -> ${endFormatted}`
+}
+
 const formatHHmm = (value: string) => {
   if (!value) return value
   return value.slice(0, 5)
@@ -303,6 +419,34 @@ const currentPage = computed(() => {
 
 
 const activeTab = ref<'campaigns' | 'campaign_logs' | 'campaign_recipients'>('campaigns')
+const recipientSearch = ref((page.props.recipient_phone ?? '').toString())
+
+const applyRecipientSearch = () => {
+  if (!selectedCampaignId.value) return
+
+  const digits = recipientSearch.value.replace(/\D+/g, '')
+  recipientSearch.value = digits
+
+  router.get(
+    route('campaigns.index'),
+    {
+      campaign_id: selectedCampaignId.value,
+      recipient_phone: digits || undefined,
+    },
+    { preserveState: true, preserveScroll: true, replace: true }
+  )
+}
+
+const clearRecipientSearch = () => {
+  recipientSearch.value = ''
+  if (!selectedCampaignId.value) return
+
+  router.get(
+    route('campaigns.index'),
+    { campaign_id: selectedCampaignId.value },
+    { preserveState: true, preserveScroll: true, replace: true }
+  )
+}
 
 const goToRecipientsTab = (campaignId: number) => {
   openCampaign(campaignId)
@@ -314,7 +458,11 @@ const openCampaign = (id: number) => {
 
   router.get(
     route('campaigns.index'),
-    { campaign_id: id, page: currentPage.value },
+    {
+      campaign_id: id,
+      page: currentPage.value,
+      recipient_phone: recipientSearch.value || undefined,
+    },
     { preserveState: true, preserveScroll: true, replace: true }
   )
 }
@@ -356,20 +504,28 @@ const goToRecipientsPage = (url: string | null) => {
           </p>
         </div>
 
-        <Link
-          :href="route('campaigns.create')"
-          class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-          title="Nueva Campaña"
-        >
-         <SquarePlus class="w-5 h-5" />
-        </Link>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Link
+                :href="route('campaigns.create')"
+                class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <SquarePlus class="w-5 h-5" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>
+              Crear Campaña
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <Tabs v-model="activeTab" class="w-full">
         <TabsList class="mb-4">
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-          <TabsTrigger value="campaign_logs" :disabled="!selectedCampaignId">Campaign Logs</TabsTrigger>
-          <TabsTrigger value="campaign_recipients" :disabled="!selectedCampaignId">Campaign Recipients</TabsTrigger>
+          <TabsTrigger value="campaign_logs" :disabled="!selectedCampaignId">Logs</TabsTrigger>
+          <TabsTrigger value="campaign_recipients" :disabled="!selectedCampaignId">Recipients</TabsTrigger>
         </TabsList>
         <!-- TAB: CAMPAIGNS -->
         <TabsContent value="campaigns" class="w-full">
@@ -402,14 +558,23 @@ const goToRecipientsPage = (url: string | null) => {
                 <div class="flex flex-wrap gap-2">
                   <Badge variant="outline">{{ c.company_name || c.company_id }}: {{ c.channel_name || c.communication_channel_id }}</Badge>
                   <Badge variant="outline">Tipo: {{ c.type }}</Badge>
-                  <Badge variant="outline">Template: {{ c.template_name || c.template_id }}</Badge>
+                  <Badge variant="outline" class="inline-flex items-center gap-1">
+                    <span>Template:</span>
+                    <button
+                      type="button"
+                      class="underline underline-offset-4 hover:text-primary"
+                      @click.stop="openTemplatePreview(c.template_id, c.template_name || String(c.template_id))"
+                    >
+                      {{ c.template_name || c.template_id }}
+                    </button>
+                  </Badge>
                 </div>
 
                 <div class="grid gap-2 text-sm">
                   <div class="flex items-center gap-2 text-muted-foreground">
                     <CalendarRange class="h-4 w-4" />
                     <span class="text-foreground">
-                      Vigencia: {{ formatDate(c.start_date) }} → {{ formatDate(c.end_date) }}
+                      Vigencia: {{ formatDateRange(c.start_date, c.end_date) }}
                     </span>
                   </div>
 
@@ -620,23 +785,59 @@ const goToRecipientsPage = (url: string | null) => {
                   Campaña #{{ selectedCampaign.id }} — {{ selectedCampaign.name }}
                 </p>
 
-                <Button
-                  v-if="selectedCampaignId"
-                  variant="outline"
-                  size="sm"
-                  as-child
-                  class="shrink-0"
-                >
-                  <a
-                    :href="route('campaigns.recipients.export', selectedCampaignId)"
-                    target="_blank"
-                    rel="noopener"
-                    class="inline-flex items-center gap-2"
+                <div class="flex items-center gap-2">
+                  <div class="relative w-[240px] max-w-[60vw]">
+                    <Search class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      v-model="recipientSearch"
+                      type="text"
+                      inputmode="numeric"
+                      placeholder="Buscar por teléfono"
+                      class="pl-8 h-9"
+                      @keyup.enter="applyRecipientSearch"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="shrink-0"
+                    @click="applyRecipientSearch"
                   >
-                    <FileSpreadsheet class="h-4 w-4" />
-                    Exportar
-                  </a>
-                </Button>
+                    Buscar
+                  </Button>
+
+                  <Button
+                    v-if="recipientSearch"
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="h-9 w-9 shrink-0"
+                    @click="clearRecipientSearch"
+                    title="Limpiar búsqueda"
+                  >
+                    <X class="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    v-if="selectedCampaignId"
+                    variant="outline"
+                    size="sm"
+                    as-child
+                    class="shrink-0"
+                  >
+                    <a
+                      :href="route('campaigns.recipients.export', selectedCampaignId)"
+                      target="_blank"
+                      rel="noopener"
+                      class="inline-flex items-center gap-2"
+                    >
+                      <FileSpreadsheet class="h-4 w-4" />
+                      Exportar
+                    </a>
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -650,11 +851,28 @@ const goToRecipientsPage = (url: string | null) => {
                   <CardHeader>
                     <div class="flex items-start justify-between gap-3">
                       <div>
-                        <CardTitle class="text-base">{{ r.phone }}</CardTitle>
+                        <CardTitle class="text-base inline-flex items-center gap-2">
+                          <Phone class="h-4 w-4 text-muted-foreground" />
+                          <button
+                            v-if="hasVariables(r.variables)"
+                            type="button"
+                            class="underline underline-offset-4 hover:text-primary transition"
+                            @click.stop="openTemplatePreviewFromRecipient(r)"
+                            title="Ver template con parámetros del destinatario"
+                          >
+                            {{ r.phone }}
+                          </button>
+                          <span v-else>{{ r.phone }}</span>
+                        </CardTitle>
                       </div>
 
                       <Badge variant="outline" class="border" :class="campaignStatusClass(r.status)">
-                        {{ r.status }}
+                        <template v-if="String(r.status).toUpperCase() === 'SENT'">
+                          <CheckCircle2 class="h-4 w-4 animate-pulse" />
+                        </template>
+                        <template v-else>
+                          {{ r.status }}
+                        </template>
                       </Badge>
                     </div>
                   </CardHeader>
@@ -764,7 +982,7 @@ const goToRecipientsPage = (url: string | null) => {
                 </Badge>
 
                 <span class="text-xs text-muted-foreground">
-                  {{ formatDateTime(it.datetime) }}
+                  {{ formatPEPlus5(it.datetime) }}
                 </span>
               </div>
             </div>
@@ -772,6 +990,86 @@ const goToRecipientsPage = (url: string | null) => {
             <div v-if="!statusPayload.list.length" class="text-sm text-muted-foreground">
               No hay estados para mostrar.
             </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="templateModalOpen">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Contenido de plantilla</DialogTitle>
+          <DialogDescription>
+            {{ templateLabel }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="mt-2 max-h-[70vh] overflow-auto pr-1">
+          <div v-if="templateLoading" class="text-sm text-muted-foreground">
+            Cargando contenido de plantilla...
+          </div>
+
+          <div v-else-if="templateError" class="text-sm text-destructive">
+            {{ templateError }}
+          </div>
+
+          <div v-else-if="!templateComponents.length" class="text-sm text-muted-foreground">
+            La plantilla no tiene componentes para mostrar.
+          </div>
+
+          <div v-else class="space-y-4">
+            <div v-if="templateHeaderComponent" class="rounded-md border p-3 space-y-2">
+              <div class="text-xs text-muted-foreground uppercase tracking-wide">Header</div>
+              <div
+                v-if="templateHeaderComponent.text"
+                class="text-sm font-medium leading-relaxed"
+                v-html="formatTemplateWithVariables(templateHeaderComponent.text)"
+              >
+              </div>
+              <div v-else class="text-sm text-muted-foreground">
+                Formato: {{ templateHeaderComponent.format || 'N/A' }}
+              </div>
+            </div>
+
+            <div v-if="templateBodyComponent" class="rounded-md border p-3 space-y-2">
+              <div class="text-xs text-muted-foreground uppercase tracking-wide">Body</div>
+              <div
+                v-if="templateBodyComponent.text"
+                class="text-sm leading-relaxed"
+                v-html="formatTemplateWithVariables(templateBodyComponent.text)"
+              >
+              </div>
+              <div v-else class="text-sm text-muted-foreground">
+                (Sin contenido)
+              </div>
+            </div>
+
+            <div v-if="templateFooterComponent" class="rounded-md border p-3 space-y-2">
+              <div class="text-xs text-muted-foreground uppercase tracking-wide">Footer</div>
+              <div
+                v-if="templateFooterComponent.text"
+                class="text-sm italic leading-relaxed"
+                v-html="formatTemplateWithVariables(templateFooterComponent.text)"
+              >
+              </div>
+              <div v-else class="text-sm text-muted-foreground">
+                (Sin contenido)
+              </div>
+            </div>
+
+            <div v-if="templateButtons.length" class="rounded-md border p-3 space-y-2">
+              <div class="text-xs text-muted-foreground uppercase tracking-wide">Buttons</div>
+              <div class="flex flex-wrap gap-2">
+                <Badge
+                  v-for="(btn, idx) in templateButtons"
+                  :key="idx"
+                  variant="secondary"
+                >
+                  {{ btn?.text || ('Button ' + (Number(idx) + 1)) }}
+                </Badge>
+              </div>
+            </div>
+
           </div>
         </div>
       </DialogContent>

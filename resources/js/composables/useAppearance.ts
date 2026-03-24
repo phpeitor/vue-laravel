@@ -31,10 +31,10 @@ const badgeClass = (s: unknown): string => {
 
 const statusBadgeClass = (s: string) => {
   const v = String(s ?? '').toUpperCase()
-  if (v.includes('LEIDO') || v.includes('READ')) return 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/30'
-  if (v.includes('ENTREGADO') || v.includes('DELIVER')) return 'bg-sky-600/20 text-sky-300 border border-sky-600/30'
-  if (v.includes('ENVIADO') || v.includes('SENT')) return 'bg-amber-600/20 text-amber-300 border border-amber-600/30'
-  if (v.includes('FALLIDO') || v.includes('SENT')) return 'bg-red-600/20 text-red-300 border border-red-600/30'
+    if (v.includes('LEIDO') || v.includes('READ')) return 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+    if (v.includes('ENTREGADO') || v.includes('DELIVER')) return 'bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30'
+    if (v.includes('ENVIADO') || v.includes('SENT')) return 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30'
+    if (v.includes('FALLIDO') || v.includes('FAILED')) return 'bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30'
   return 'bg-muted text-foreground border border-border'
 }
 

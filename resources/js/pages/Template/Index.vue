@@ -625,55 +625,51 @@ function soloNumeros(e) {
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="bg-background text-foreground py-10">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="sm:flex sm:items-center">
-          <div class="sm:flex-auto">
-            <div class="flex items-center gap-2">
-              <h1 class="text-xl font-semibold text-foreground">Plantillas de Comunicación</h1>
-              
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      variant="outline"
-                      class="h-7 w-7 p-0"
-                      @click="goToCreate"
-                    >
-                      <ChevronRight class="w-3 h-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center">
-                    <span>Crear</span>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      variant="outline"
-                      class="h-7 w-7 p-0"
-                      :disabled="syncingTemplates"
-                      @click="syncTemplates"
-                    >
-                      <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': syncingTemplates }" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center">
-                    <span>{{ syncingTemplates ? 'Sincronizando...' : 'Sincronizar' }}</span>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-            </div>
+        <div class="space-y-4">
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-semibold text-foreground">Plantillas de Comunicación</h1>
           </div>
 
-          <div class="flex items-center gap-3 mr-4 min-w-[420px]">
+          <div class="flex flex-wrap items-center gap-2 md:gap-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="outline"
+                    class="h-8 w-8 p-0 shrink-0"
+                    @click="goToCreate"
+                  >
+                    <ChevronRight class="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center">
+                  <span>Crear</span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="outline"
+                    class="h-8 w-8 p-0 shrink-0"
+                    :disabled="syncingTemplates"
+                    @click="syncTemplates"
+                  >
+                    <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': syncingTemplates }" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center">
+                  <span>{{ syncingTemplates ? 'Sincronizando...' : 'Sincronizar' }}</span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <select
               v-model="companyId"
               @change="onCompanyChange"
-              class="h-9 w-44 rounded-md border bg-background px-3 text-sm text-foreground
-                    ring-1 ring-border focus:outline-none"
+              class="h-9 w-full sm:w-52 lg:w-56 rounded-md border bg-background px-3 text-sm text-foreground ring-1 ring-border focus:outline-none"
             >
               <option value="" disabled>
                 Seleccione compañía
@@ -686,8 +682,8 @@ function soloNumeros(e) {
                 {{ c.company_name }}
               </option>
             </select>
-            
-            <div class="relative w-56">
+
+            <div class="relative w-full sm:w-56 lg:w-60">
               <div
                 class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
               >
@@ -705,10 +701,7 @@ function soloNumeros(e) {
                 v-model="channelId"
                 @change="applyFilters"
                 :disabled="!companyId"
-                class="h-9 w-full rounded-md border bg-background
-                      pl-8 pr-3 text-sm text-foreground
-                      ring-1 ring-border focus:outline-none
-                      truncate disabled:opacity-50"
+                class="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-sm text-foreground ring-1 ring-border focus:outline-none truncate disabled:opacity-50"
               >
                 <option value="" disabled>
                   Seleccione canal
@@ -724,19 +717,17 @@ function soloNumeros(e) {
               </select>
             </div>
 
+            <div class="relative w-full sm:w-56 lg:w-64 xl:w-72">
+              <MagnifyingGlass class="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground transform -translate-y-1/2 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Buscar"
+                class="h-9 pl-8 pr-3 text-sm bg-card text-foreground ring-1 ring-inset ring-border placeholder:text-muted-foreground focus:ring-2 focus:ring-inset focus:ring-indigo-600 transition-colors"
+                :model-value="globalFilter"
+                @update:model-value="(value) => table.setGlobalFilter(value)"
+              />
+            </div>
           </div>
-
-          <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none relative w-full max-w-xs">
-            <MagnifyingGlass class="absolute left-2.5 top-1/2 h-4 w-4 text-muted-foreground transform -translate-y-1/2 pointer-events-none" />
-            <Input
-              type="text"
-              placeholder="Buscar"
-              class="pl-8 py-1.5 text-sm bg-card text-foreground ring-1 ring-inset ring-border placeholder:text-muted-foreground focus:ring-2 focus:ring-inset focus:ring-indigo-600 transition-colors"
-              :model-value="globalFilter"
-              @update:model-value="(value) => table.setGlobalFilter(value)"
-            />
-          </div>
-
         </div>
 
         <div class="mt-8 rounded-md border shadow">
