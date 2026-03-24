@@ -17,6 +17,8 @@ class DispatchCampaignRecipients implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public string $queue = 'campaign-process';
+
     public function __construct(public int $campaignId) {}
 
     public function handle(): void
@@ -27,8 +29,6 @@ class DispatchCampaignRecipients implements ShouldQueue
 
         $campaign = Campaign::findOrFail($this->campaignId);
 
-        // ✅ Permitir re-dispatch si está RUNNING
-        // ❌ Bloquear si ya terminó
         $allowed = ['READY', 'SCHEDULED', 'RUNNING'];
         $blocked = ['FINALLY', 'FINALLY_FAILED', 'FAILED', 'CANCELLED'];
 
@@ -40,7 +40,6 @@ class DispatchCampaignRecipients implements ShouldQueue
             return;
         }
 
-        // 🔒 Marcar RUNNING antes para evitar doble disparo por 2 workers
         if ($campaign->status !== 'RUNNING') {
             $campaign->update(['status' => 'RUNNING']);
         }
@@ -48,13 +47,13 @@ class DispatchCampaignRecipients implements ShouldQueue
         CampaignRecipient::where('campaign_id', $campaign->id)
             ->where('status', 'PENDING')
             ->select('id')
-            ->chunkById(100, function ($recipients) {
+            ->chunkById(300, function ($recipients) {
                 foreach ($recipients as $recipient) {
-                    SendCampaignRecipient::dispatch($recipient->id);
+                    SendCampaignRecipient::dispatch($recipient->id)
+                        ->onQueue('campaign-send');
                 }
             });
 
-        // ✅ Si ya no quedan pendientes, la finalizeIfDone lo llevará a FINALLY/FINALLY_FAILED
         Campaign::finalizeIfDone($campaign->id);
 
         \Log::info('DispatchCampaignRecipients END', [

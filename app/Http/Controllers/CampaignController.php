@@ -37,6 +37,7 @@ class CampaignController extends Controller
 
         $selectedCampaignId = $request->integer('campaign_id');
         $recipientsPage = $request->integer('recipients_page', 1);
+        $recipientPhone = preg_replace('/\D+/', '', (string) $request->query('recipient_phone', ''));
 
         $perPage = 6;
         $recipientsPerPage = 15;
@@ -95,9 +96,15 @@ class CampaignController extends Controller
 
             $recipients = CampaignRecipient::query()
                 ->where('campaign_id', $selectedCampaignId)
+                ->when($recipientPhone !== '', function ($q) use ($recipientPhone) {
+                    $q->where('phone', 'like', "%{$recipientPhone}%");
+                })
                 ->orderByDesc('id')
                 ->paginate($recipientsPerPage, ['*'], 'recipients_page', $recipientsPage)
-                ->appends(['campaign_id' => $selectedCampaignId]);
+                ->appends([
+                    'campaign_id' => $selectedCampaignId,
+                    'recipient_phone' => $recipientPhone,
+                ]);
         }
 
         return Inertia::render('Campaign/Index', [
@@ -105,6 +112,7 @@ class CampaignController extends Controller
             'campaign_logs' => $logs,
             'campaign_recipients' => $recipients,
             'selectedCampaignId' => $selectedCampaignId,
+            'recipient_phone' => $recipientPhone,
         ]);
     
     }

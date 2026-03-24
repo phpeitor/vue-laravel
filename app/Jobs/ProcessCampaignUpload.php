@@ -19,6 +19,7 @@ class ProcessCampaignUpload implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public string $queue = 'campaign-process';
     public int $uploadId;
     public int $timeout = 120; 
     public int $tries = 3;
@@ -131,9 +132,12 @@ class ProcessCampaignUpload implements ShouldQueue
 
             DB::commit();
             if ($campaign->type === 'Programada') {
-                DispatchCampaignRecipients::dispatch($campaign->id)->delay($campaign->start_at);
+                DispatchCampaignRecipients::dispatch($campaign->id)
+                    ->onQueue('campaign-process')
+                    ->delay($campaign->start_at);
             } else {
-                DispatchCampaignRecipients::dispatch($campaign->id);
+                DispatchCampaignRecipients::dispatch($campaign->id)
+                    ->onQueue('campaign-process');
             }
         } catch (\Throwable $e) {
             DB::rollBack();
