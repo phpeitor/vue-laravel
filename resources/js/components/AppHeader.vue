@@ -25,6 +25,10 @@ interface Props {
     breadcrumbs?: BreadcrumbItem[];
 }
 
+type HeaderNavItem = Omit<NavItem, 'href'> & {
+    href: string;
+};
+
 const props = withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
@@ -52,7 +56,7 @@ const activeItemStyles = computed(
     () => (url: string) => (isCurrentRoute.value(url) ? 'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100' : ''),
 );
 
-const mainNavItems: NavItem[] = [
+const mainNavItems: HeaderNavItem[] = [
     {
         title: 'Dashboard',
         href: '/dashboard',
@@ -60,7 +64,7 @@ const mainNavItems: NavItem[] = [
     },
 ];
 
-const rightNavItems: NavItem[] = [
+const rightNavItems: HeaderNavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/laravel/vue-starter-kit',

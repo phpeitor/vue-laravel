@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\EventPushController;
 use App\Http\Controllers\Api\HsmStatusController;
 use App\Http\Controllers\ChatReplyController;
 
+// Endpoint API para clientes externos (SPA/mobile/Postman) autenticados con Sanctum.
+// En vistas Inertia de este proyecto, preferir usePage().props.auth.user.
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');

@@ -8,6 +8,8 @@ use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\IssueController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\Api\DataController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -101,6 +103,15 @@ Route::middleware(['auth'])->patch('/chat/threads/{thread}/reassign', [ChatContr
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/chat/history', [ChatController::class, 'historyByPhone']);
+});
+
+Route::middleware(['auth', 'permission:reports'])->group(function () {
+    Route::get('/reports/interactions', [ReportController::class, 'interactions'])->name('reports.interactions');
+    Route::get('/reports/threads', [ReportController::class, 'threads'])->name('reports.threads');
+    Route::get('/reports/interactions/data', [ReportController::class, 'getInteractionsData'])->name('reports.interactions.data');
+    Route::get('/reports/interactions/export', [ReportController::class, 'exportInteractions'])->name('reports.interactions.export');
+    Route::get('/reports/filters/companies', [DataController::class, 'companies'])->name('reports.filters.companies');
+    Route::get('/reports/filters/channels', [DataController::class, 'communicationChannels'])->name('reports.filters.channels');
 });
 
 /*

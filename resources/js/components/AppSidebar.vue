@@ -5,7 +5,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Users, Notebook, MessageCircleMore } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, Users, Notebook, MessageCircleMore, BarChart3 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 import useAuth from '@/composables/useAuth';
 
@@ -20,6 +20,14 @@ const allNavItems: NavItem[] = [
   { title: 'Plantillas', href: '/templates', icon: Notebook },
   { title: 'Campañas', href: '/campaigns', icon: Folder },
   { title: 'Chat', href: '/chat', icon: MessageCircleMore },
+  {
+    title: 'Reportes',
+    icon: BarChart3,
+    items: [
+      { title: 'Interacciones', href: '/reports/interactions' },
+      { title: 'Threads', href: '/reports/threads' },
+    ],
+  },
 ];
 
 const mainNavItems = allNavItems.filter(item => {
@@ -31,6 +39,9 @@ const mainNavItems = allNavItems.filter(item => {
   }
   if (item.title === 'Campañas') {
     return hasPermission('campaigns'); 
+  }
+  if (item.title === 'Reportes') {
+    return hasPermission('reports'); 
   }
   return true;
 })
