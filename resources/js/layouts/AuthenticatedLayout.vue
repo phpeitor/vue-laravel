@@ -6,26 +6,29 @@ import Dropdown from "@/components/Dropdown.vue";
 import DropdownLink from "@/components/DropdownLink.vue";
 import NavLink from "@/components/NavLink.vue";
 import ResponsiveNavLink from "@/components/ResponsiveNavLink.vue";
-import { Link } from "@inertiajs/vue3";
+import { Link, usePage } from "@inertiajs/vue3";
 import useAuth from "@/composables/useAuth";
 
 const { hasPermission } = useAuth();
+const page = usePage();
 const showingNavigationDropdown = ref(false);
 
 import { onMounted } from 'vue';
-import { useToast } from '@/components/ui/toast/use-toast';
-import { Toaster } from '@/components/ui/toast';
-
-const { toast } = useToast();
+import { Toaster as Sonner, toast as sonnerToast } from 'vue-sonner';
 
 onMounted(() => {
     window.Echo.channel('online-users')
         .listen('.UserLoggedIn', (e) => {
-            toast({
-                    title: 'Usuario en línea',
-                    description: `${e.user.name}`,
-                    variant: 'success',
-                });
+            const currentUserId = Number(page.props?.auth?.user?.id ?? 0);
+            const eventUserId = Number(e?.user?.id ?? 0);
+
+            if (currentUserId > 0 && currentUserId === eventUserId) {
+                return;
+            }
+
+            sonnerToast.success('Usuario en línea', {
+                description: e?.user?.name ?? 'Usuario',
+            });
         });
 });
 </script>
@@ -215,6 +218,6 @@ onMounted(() => {
         </main>
     </div>
    
-    <Toaster />
+    <Sonner rich-colors position="bottom-right" />
 
 </template>
