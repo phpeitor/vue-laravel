@@ -110,6 +110,8 @@ Route::middleware(['auth', 'permission:reports'])->group(function () {
     Route::get('/reports/threads', [ReportController::class, 'threads'])->name('reports.threads');
     Route::get('/reports/interactions/data', [ReportController::class, 'getInteractionsData'])->name('reports.interactions.data');
     Route::get('/reports/interactions/export', [ReportController::class, 'exportInteractions'])->name('reports.interactions.export');
+    Route::get('/reports/threads/data', [ReportController::class, 'getThreadsData'])->name('reports.threads.data');
+    Route::get('/reports/threads/export', [ReportController::class, 'exportThreads'])->name('reports.threads.export');
     Route::get('/reports/filters/companies', [DataController::class, 'companies'])->name('reports.filters.companies');
     Route::get('/reports/filters/channels', [DataController::class, 'communicationChannels'])->name('reports.filters.channels');
 });
