@@ -24,6 +24,15 @@ class ProcessExternalMessageEvent
             $companyId = (int) ($data['company_id']               ?? 0);
             $channelId = (int) ($data['communication_channel_id'] ?? 0);
 
+            Log::info('EXTERNAL_EVENT_INCOMING_PROCESSING', [
+                'type' => $type,
+                'thread_id' => $data['thread_id'] ?? null,
+                'company_id' => $companyId,
+                'communication_channel_id' => $channelId,
+                'phone' => $data['phone'] ?? null,
+                'item_type' => $data['item_type'] ?? 'text',
+            ]);
+
             if (!$companyId || !$channelId) {
                 Log::warning('IncomingMessage: falta company_id o communication_channel_id', ['data' => $data]);
                 return;

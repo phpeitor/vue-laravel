@@ -69,3 +69,36 @@ php artisan queue:work
 
 > [!NOTE]
 > Si este proyecto te sirve... ¡Dale una estrella ⭐ y compártelo con tu equipo!
+
+## API interna y cuándo usarla
+
+### Endpoints en routes/api.php
+
+- GET /api/user
+  - Devuelve el usuario autenticado del request.
+  - Protegido con auth:sanctum.
+  - Uso recomendado: clientes API externos (SPA separada, app móvil, Postman con token/cookies Sanctum).
+
+- POST /api/external-event
+  - Webhook de entrada de omnichannel para eventos externos (mensajes incoming/received).
+  - Lo consume un sistema externo, no la UI Inertia directamente.
+
+- GET /api/threads/{id}
+  - Devuelve detalle de un thread vía ThreadController.
+  - Útil para integraciones o diagnóstico API.
+
+- POST /api/chat/threads/{threadId}/reply
+  - Envía respuesta de chat al omnichannel.
+  - Consumido por la pantalla de chat.
+
+- GET /api/hsm/{providerMessageId}/status
+  - Consulta estado HSM vía proxy backend.
+  - Consumido por la pantalla de campañas.
+
+### Qué usar dentro de este proyecto (Inertia)
+
+- Para datos del usuario logueado en frontend Inertia, usar props compartidas:
+  - usePage().props.auth.user
+  - Ejemplos en componentes como AppHeader y NavUser.
+
+- Para filtros o datos internos de pantallas web (ejemplo Reportes), preferir rutas web con middleware auth y permisos, en lugar de crear endpoints API con auth:sanctum sin necesidad.

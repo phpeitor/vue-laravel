@@ -29,6 +29,15 @@ class ChatReplyController extends Controller
 
         $validated = $request->validate($rules);
 
+        Log::info('CHAT_SUBMIT_RECEIVED', [
+            'thread_id' => $threadId,
+            'message_type' => $messageType,
+            'user_id' => (int) ($validated['userId'] ?? 0),
+            'has_message' => $messageType === 'text' ? !empty(trim((string) ($validated['message'] ?? ''))) : false,
+            'has_image' => $messageType === 'image' ? $request->hasFile('image') : false,
+            'ip' => $request->ip(),
+        ]);
+
         $data = [
             'messageType' => $messageType,
             'userId' => (int) $validated['userId'],
@@ -148,6 +157,14 @@ class ChatReplyController extends Controller
                 ->where('id', $threadId)
                 ->update(['last_outgoing_message_id' => $messageId]);
         }
+
+        Log::info('CHAT_SUBMIT_SENT', [
+            'thread_id' => $threadId,
+            'message_type' => $messageType,
+            'user_id' => (int) ($validated['userId'] ?? 0),
+            'message_id' => $messageId,
+            'omnichannel_status' => $res->status(),
+        ]);
 
         return response()->json($payload);
     }
