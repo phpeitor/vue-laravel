@@ -14,15 +14,18 @@ class ChatReplyController extends Controller
     public function store(Request $request, int $threadId)
     {
         $messageType = strtolower((string) $request->input('messageType', 'text'));
-        $isMedia = in_array($messageType, ['image', 'file'], true);
+        $isMedia = in_array($messageType, ['image', 'file', 'audio'], true);
+        $isAudio = $messageType === 'audio';
 
         $rules = [
-            'messageType' => ['required', 'string', 'in:text,image,file'],
+            'messageType' => ['required', 'string', 'in:text,image,file,audio'],
             'userId' => ['required', 'integer'],
         ];
 
         if ($isMedia) {
-            $rules['file'] = ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:2048'];
+            $rules['file'] = $isAudio
+                ? ['required', 'file', 'mimes:mp3', 'max:4096']
+                : ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:2048'];
             $rules['fileName'] = ['nullable', 'string', 'max:180'];
         } else {
             $rules['message'] = ['required', 'string'];
@@ -66,12 +69,12 @@ class ChatReplyController extends Controller
             $fileName = $baseName . '.' . $extension;
 
             $isImageFile = str_starts_with((string) $file->getMimeType(), 'image/');
-            $storageFolder = $isImageFile ? 'messages_image' : 'messages_file';
+            $storageFolder = $isAudio ? 'messages_audio' : ($isImageFile ? 'messages_image' : 'messages_file');
             $path = $file->storeAs($storageFolder, $fileName, 'public');
             $fileUrl = url(Storage::url($path));
 
             $data['message'] = $fileUrl;
-            $data['messageType'] = 'file';
+            $data['messageType'] = $isAudio ? 'audio' : 'file';
         } else {
             $data['message'] = (string) $validated['message'];
         }

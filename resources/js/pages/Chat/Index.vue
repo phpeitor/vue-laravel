@@ -346,6 +346,23 @@ const getMessageHtml = (m: MessageRow, isHistory: boolean = false): string => {
     `
   }
 
+  if ((m.item_type ?? '').toLowerCase() === 'audio_uploading') {
+    return `
+      <div class="inline-flex items-center gap-2">
+        <span class="inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+        <span>Subiendo audio...</span>
+      </div>
+    `
+  }
+
+  if ((m.item_type ?? '').toLowerCase() === 'audio') {
+    const rawUrl = (m.item_content ?? '').trim()
+    const safeUrl = rawUrl.replace(/"/g, '&quot;')
+    if (!safeUrl) return ''
+
+    return `<audio controls preload="none" class="w-full max-w-[340px]"><source src="${safeUrl}" type="audio/mpeg" />Tu navegador no soporta audio HTML5.</audio>`
+  }
+
   if ((m.item_type ?? '').toLowerCase() === 'image') {
     const rawUrl = (m.item_content ?? '').trim()
     const safeUrl = rawUrl.replace(/"/g, '&quot;')
@@ -1247,19 +1264,22 @@ const onImageSelected = (event: Event) => {
   const lowerName = (file.name || '').toLowerCase()
   const isImage = file.type.startsWith('image/')
   const isPdf = file.type === 'application/pdf' || lowerName.endsWith('.pdf')
+  const isAudio = file.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
 
-  if (!isImage && !isPdf) {
+  if (!isImage && !isPdf && !isAudio) {
     sonnerToast.error('Archivo no permitido', {
-      description: 'Solo se permiten imagenes y PDF.',
+      description: 'Solo se permiten imagenes, PDF y MP3.',
     })
     clearImageDraft()
     return
   }
 
-  const maxBytes = 2 * 1024 * 1024
+  const maxBytes = isAudio ? 4 * 1024 * 1024 : 2 * 1024 * 1024
   if (file.size > maxBytes) {
     sonnerToast.error('Archivo demasiado pesado', {
-      description: 'El tamano maximo es 2MB para imagenes y PDF.',
+      description: isAudio
+        ? 'El tamano maximo para MP3 es 4MB.'
+        : 'El tamano maximo para imagenes y PDF es 2MB.',
     })
     clearImageDraft()
     return
@@ -1268,21 +1288,24 @@ const onImageSelected = (event: Event) => {
   clearImageDraft()
   imageFile.value = file
   imageFileName.value = buildImageFileName(file)
-  imagePreviewUrl.value = isImage ? URL.createObjectURL(file) : ''
+  imagePreviewUrl.value = (isImage || isAudio) ? URL.createObjectURL(file) : ''
   imagePreviewOpen.value = true
 }
 
 const imagePayloadPreview = computed(() => {
   const userId = (page.props.auth as any)?.user?.id ?? null
   const isImage = !!imageFile.value?.type?.startsWith('image/')
-  const fallback = isImage ? 'image.jpg' : 'archivo.pdf'
-  const folder = isImage ? 'messages_image' : 'messages_file'
+  const lowerName = (imageFile.value?.name || '').toLowerCase()
+  const isAudio = imageFile.value?.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
+  const fallback = isAudio ? 'audio.mp3' : (isImage ? 'image.jpg' : 'archivo.pdf')
+  const folder = isAudio ? 'messages_audio' : (isImage ? 'messages_image' : 'messages_file')
+  const messageType = isAudio ? 'audio' : 'file'
   const message = `${window.location.origin}/storage/${folder}/${imageFileName.value || fallback}`
 
   return JSON.stringify(
     {
       message,
-      messageType: 'file',
+      messageType,
       userId: String(userId ?? ''),
     },
     null,
@@ -1299,7 +1322,12 @@ const sendAttachedImage = async () => {
   const threadId = activeThreadId.value
   const optimisticId = `tmp-img-${Date.now()}`
   const socketId = (window as any).Echo?.socketId?.()
-  const optimisticType = imageFile.value.type.startsWith('image/') ? 'image_uploading' : 'file_uploading'
+  const lowerName = (imageFile.value.name || '').toLowerCase()
+  const isAudio = imageFile.value.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
+  const optimisticType = isAudio
+    ? 'audio_uploading'
+    : (imageFile.value.type.startsWith('image/') ? 'image_uploading' : 'file_uploading')
+  const outboundType = isAudio ? 'audio' : 'file'
 
   messagesList.value.push({
     message_id: -1,
@@ -1315,7 +1343,7 @@ const sendAttachedImage = async () => {
 
   try {
     const formData = new FormData()
-    formData.append('messageType', 'file')
+    formData.append('messageType', outboundType)
     formData.append('userId', String((page.props.auth as any)?.user?.id ?? ''))
     formData.append('fileName', imageFileName.value)
     formData.append('file', imageFile.value)
@@ -1800,7 +1828,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                 <input
                   ref="imageInputRef"
                   type="file"
-                  accept="image/*,application/pdf,.pdf"
+                  accept="image/*,application/pdf,.pdf,audio/mpeg,.mp3"
                   class="hidden"
                   @change="onImageSelected"
                 />
@@ -2185,9 +2213,16 @@ const onLightboxWheel = (event: WheelEvent) => {
                 alt="Preview"
                 class="max-h-72 w-full rounded-md object-contain"
               />
+              <audio
+                v-else-if="imagePreviewUrl && (imageFile?.type === 'audio/mpeg' || imageFileName.toLowerCase().endsWith('.mp3'))"
+                :src="imagePreviewUrl"
+                controls
+                preload="none"
+                class="w-full"
+              ></audio>
               <div v-else class="min-h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
                 <FileText class="h-10 w-10" />
-                <span class="text-sm font-medium">{{ imageFileName || 'PDF adjunto' }}</span>
+                <span class="text-sm font-medium">{{ imageFileName || 'Archivo adjunto' }}</span>
               </div>
             </div>
             <p class="text-xs text-muted-foreground">
