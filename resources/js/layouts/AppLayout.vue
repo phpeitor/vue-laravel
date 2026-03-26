@@ -24,6 +24,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePage } from '@inertiajs/vue3';
 import type { BreadcrumbItemType } from '@/types';
 import { Bug } from 'lucide-vue-next';
 import { onMounted, ref } from 'vue';
@@ -37,10 +38,8 @@ withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
 
-import { useToast } from '@/components/ui/toast/use-toast';
 import { Toaster } from '@/components/ui/toast';
-
-const { toast } = useToast();
+const page = usePage();
 const openIssueDialog = ref(false);
 const issueType = ref('BUG_REPORT');
 const issueSeverity = ref('MINOR');
@@ -95,11 +94,16 @@ async function submitIssue() {
 onMounted(() => {
     window.Echo.channel('online-users')
         .listen('.UserLoggedIn', (e: any) => {
-            toast({
-                    title: 'Usuario en línea',
-                    description: `${e.user.name}`,
-                    variant: 'success',
-                });
+            const currentUserId = Number((page.props as any)?.auth?.user?.id ?? 0);
+            const eventUserId = Number(e?.user?.id ?? 0);
+
+            if (currentUserId > 0 && currentUserId === eventUserId) {
+                return;
+            }
+
+            sonnerToast.success('Usuario en línea', {
+                description: e?.user?.name ?? 'Usuario',
+            });
         });
 
 

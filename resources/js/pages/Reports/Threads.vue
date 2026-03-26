@@ -80,7 +80,7 @@ const maxDate = today(tz);
 
 const buildDefaultDates = () => {
   const end = new Date();
-  const start = subDays(end, 15);
+  const start = subDays(end, 7);
   return {
     startStr: format(start, 'yyyy-MM-dd'),
     endStr: format(end, 'yyyy-MM-dd'),
@@ -382,12 +382,12 @@ const downloadReport = async () => {
 
 const getStatusBadgeClass = (status: string) => {
   const statusMap: Record<string, string> = {
-    OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
-    CLOSED: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100',
-    SPAM: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
+    OPEN: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-100 pointer-events-none',
+    CLOSED: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 pointer-events-none',
+    SPAM: 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-700 dark:bg-rose-900 dark:text-rose-100 pointer-events-none',
   };
 
-  return statusMap[status] || 'bg-gray-100 text-gray-800';
+  return statusMap[status] || 'border-slate-200 bg-slate-100 text-slate-700 pointer-events-none';
 };
 </script>
 

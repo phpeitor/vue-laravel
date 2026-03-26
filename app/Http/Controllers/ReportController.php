@@ -202,7 +202,7 @@ class ReportController extends Controller
             ->joinSub($threadsFiltered, 'tf', function ($join) {
                 $join->on('tf.id', '=', 'm.thread_id');
             })
-            ->selectRaw("\n                m.thread_id,\n                COUNT(*) AS cantidad,\n                COUNT(*) FILTER (WHERE m.item_type = 'text') AS text,\n                COUNT(*) FILTER (WHERE m.item_type = 'image') AS image,\n                COUNT(*) FILTER (WHERE m.item_type = 'document') AS document,\n                COUNT(*) FILTER (\n                    WHERE m.item_type NOT IN ('text', 'image', 'document')\n                        OR m.item_type IS NULL\n                ) AS otro,\n                COUNT(*) FILTER (WHERE COALESCE(m.external_id, '') = '') AS bot,\n                COUNT(*) FILTER (WHERE COALESCE(m.external_id, '') <> '') AS usuario\n            ")
+            ->selectRaw("\n                m.thread_id,\n                COUNT(*) AS cantidad,\n                COUNT(*) FILTER (WHERE m.item_type = 'text') AS text,\n                COUNT(*) FILTER (WHERE m.item_type = 'image') AS image,\n                COUNT(*) FILTER (WHERE m.item_type = 'file') AS document,\n                COUNT(*) FILTER (\n                    WHERE m.item_type NOT IN ('text', 'image', 'file')\n                        OR m.item_type IS NULL\n                ) AS otro,\n                COUNT(*) FILTER (WHERE COALESCE(m.external_id, '') = '') AS bot,\n                COUNT(*) FILTER (WHERE COALESCE(m.external_id, '') <> '') AS usuario\n            ")
             ->groupBy('m.thread_id');
 
         return DB::query()
