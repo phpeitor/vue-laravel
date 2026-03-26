@@ -72,11 +72,12 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut, FileText, Download } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
 import axios from 'axios'
+import { toast as sonnerToast } from 'vue-sonner'
 
 type ThreadSummary = {
   thread_id: number
@@ -311,7 +312,7 @@ const getMessagePlainText = (m: MessageRow): string => {
 }
 
 /** Devuelve HTML final listo para v-html según el tipo de mensaje */
-const getMessageHtml = (m: MessageRow): string => {
+const getMessageHtml = (m: MessageRow, isHistory: boolean = false): string => {
   if ((m.item_type ?? '').toLowerCase() === 'text_uploading') {
     const rawText = (m.item_content ?? '').trim()
     const safeText = formatWhatsappText(rawText)
@@ -336,13 +337,47 @@ const getMessageHtml = (m: MessageRow): string => {
     `
   }
 
+  if ((m.item_type ?? '').toLowerCase() === 'file_uploading') {
+    return `
+      <div class="inline-flex items-center gap-2">
+        <span class="inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin"></span>
+        <span>Subiendo archivo...</span>
+      </div>
+    `
+  }
+
   if ((m.item_type ?? '').toLowerCase() === 'image') {
     const rawUrl = (m.item_content ?? '').trim()
     const safeUrl = rawUrl.replace(/"/g, '&quot;')
 
     if (!safeUrl) return ''
 
-    return `<img src="${safeUrl}" alt="Imagen" class="max-h-72 w-auto rounded-lg border object-cover" loading="lazy" />`
+    const cursorClass = isHistory ? '' : 'cursor-zoom-in'
+    const dataAttrs = isHistory ? '' : 'data-file-type="image" data-file-url="' + safeUrl + '"'
+
+    return `<img src="${safeUrl}" alt="Imagen" class="max-h-72 w-auto rounded-lg border object-cover ${cursorClass}" loading="lazy" ${dataAttrs} />`
+  }
+
+  if ((m.item_type ?? '').toLowerCase() === 'file') {
+    const rawUrl = (m.item_content ?? '').trim()
+    const safeUrl = rawUrl.replace(/"/g, '&quot;')
+    
+    if (!safeUrl) return ''
+    
+    const fileName = safeUrl.split('/').pop() || 'archivo'
+    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(safeUrl)
+    
+    if (isImage) {
+      const cursorClass = isHistory ? '' : 'cursor-zoom-in'
+      const dataAttrs = isHistory ? '' : 'data-file-type="image" data-file-url="' + safeUrl + '"'
+      return `<img src="${safeUrl}" alt="${fileName}" class="max-h-72 w-auto rounded-lg border object-cover ${cursorClass}" loading="lazy" ${dataAttrs} />`
+    }
+    
+    if (isHistory) {
+      return `<a href="${safeUrl}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/50 hover:bg-muted/70 transition-colors text-xs"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span class="font-medium">${fileName}</span></a>`
+    }
+    
+    return `<a href="#" data-file-type="file" data-file-url="${safeUrl}" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted hover:bg-muted/80 cursor-pointer transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span class="text-sm font-medium">${fileName}</span></a>`
   }
 
   if (m.item_type === 'referral') {
@@ -1209,11 +1244,13 @@ const onImageSelected = (event: Event) => {
   const file = target?.files?.[0]
   if (!file) return
 
-  if (!file.type.startsWith('image/')) {
-    toast({
-      title: 'Archivo no permitido',
-      description: 'Solo se permiten imagenes.',
-      variant: 'destructive',
+  const lowerName = (file.name || '').toLowerCase()
+  const isImage = file.type.startsWith('image/')
+  const isPdf = file.type === 'application/pdf' || lowerName.endsWith('.pdf')
+
+  if (!isImage && !isPdf) {
+    sonnerToast.error('Archivo no permitido', {
+      description: 'Solo se permiten imagenes y PDF.',
     })
     clearImageDraft()
     return
@@ -1221,10 +1258,8 @@ const onImageSelected = (event: Event) => {
 
   const maxBytes = 2 * 1024 * 1024
   if (file.size > maxBytes) {
-    toast({
-      title: 'Imagen demasiado pesada',
-      description: 'El tamano maximo es 2MB.',
-      variant: 'destructive',
+    sonnerToast.error('Archivo demasiado pesado', {
+      description: 'El tamano maximo es 2MB para imagenes y PDF.',
     })
     clearImageDraft()
     return
@@ -1233,18 +1268,21 @@ const onImageSelected = (event: Event) => {
   clearImageDraft()
   imageFile.value = file
   imageFileName.value = buildImageFileName(file)
-  imagePreviewUrl.value = URL.createObjectURL(file)
+  imagePreviewUrl.value = isImage ? URL.createObjectURL(file) : ''
   imagePreviewOpen.value = true
 }
 
 const imagePayloadPreview = computed(() => {
   const userId = (page.props.auth as any)?.user?.id ?? null
-  const message = `${window.location.origin}/storage/messages_image/${imageFileName.value || 'image.jpg'}`
+  const isImage = !!imageFile.value?.type?.startsWith('image/')
+  const fallback = isImage ? 'image.jpg' : 'archivo.pdf'
+  const folder = isImage ? 'messages_image' : 'messages_file'
+  const message = `${window.location.origin}/storage/${folder}/${imageFileName.value || fallback}`
 
   return JSON.stringify(
     {
       message,
-      messageType: 'image',
+      messageType: 'file',
       userId: String(userId ?? ''),
     },
     null,
@@ -1261,11 +1299,12 @@ const sendAttachedImage = async () => {
   const threadId = activeThreadId.value
   const optimisticId = `tmp-img-${Date.now()}`
   const socketId = (window as any).Echo?.socketId?.()
+  const optimisticType = imageFile.value.type.startsWith('image/') ? 'image_uploading' : 'file_uploading'
 
   messagesList.value.push({
     message_id: -1,
     thread_id: threadId,
-    item_type: 'image_uploading',
+    item_type: optimisticType,
     item_content: imageFileName.value,
     message_create_date: new Date().toISOString(),
     origin: 'APP',
@@ -1276,10 +1315,10 @@ const sendAttachedImage = async () => {
 
   try {
     const formData = new FormData()
-    formData.append('messageType', 'image')
+    formData.append('messageType', 'file')
     formData.append('userId', String((page.props.auth as any)?.user?.id ?? ''))
     formData.append('fileName', imageFileName.value)
-    formData.append('image', imageFile.value)
+    formData.append('file', imageFile.value)
 
     const response = await axios.post(`/api/chat/threads/${threadId}/reply`, formData, {
       headers: {
@@ -1306,7 +1345,7 @@ const sendAttachedImage = async () => {
     const idx = messagesList.value.findIndex(m => m.external_id === optimisticId)
     if (idx >= 0) messagesList.value.splice(idx, 1)
 
-    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar la imagen'
+    const serverMsg = e?.response?.data?.error ?? e?.message ?? 'Error al enviar el archivo'
     toast({
       title: 'No se pudo enviar',
       description: serverMsg,
@@ -1386,21 +1425,62 @@ const sendMessage = async () => {
 const lightboxOpen = ref(false)
 const lightboxSrc = ref('')
 const lightboxZoom = ref(1)
+const lightboxType = ref<'image' | 'file'>('image')
+const lightboxFileName = ref('')
+
+const isDarkMode = computed(() => {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches || 
+         document.documentElement.classList.contains('dark')
+})
 
 const openImageLightbox = (src: string) => {
   if (!src) return
   lightboxSrc.value = src
   lightboxZoom.value = 1
+  lightboxType.value = 'image'
+  lightboxFileName.value = ''
+  lightboxOpen.value = true
+}
+
+const openFileLightbox = (src: string, fileName: string = '') => {
+  if (!src) return
+  lightboxSrc.value = src
+  lightboxZoom.value = 1
+  lightboxType.value = 'file'
+  lightboxFileName.value = fileName
   lightboxOpen.value = true
 }
 
 const onMessageBodyClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null
-  const imgEl = target?.closest('img') as HTMLImageElement | null
-  if (!imgEl) return
-
-  const src = imgEl.getAttribute('src') || ''
-  openImageLightbox(src)
+  
+  const imgEl = target?.closest('img[data-file-url]') as HTMLImageElement | null
+  if (imgEl) {
+    const src = imgEl.getAttribute('src') || ''
+    const fileType = imgEl.getAttribute('data-file-type') || 'image'
+    
+    if (fileType === 'image') {
+      openImageLightbox(src)
+    }
+    return
+  }
+  
+  const linkEl = target?.closest('a[data-file-url]') as HTMLAnchorElement | null
+  if (linkEl) {
+    const src = linkEl.getAttribute('data-file-url') || ''
+    const fileName = linkEl.querySelector('span')?.textContent || 'archivo'
+    
+    const isPdf = /\.pdf$/i.test(src)
+    if (isPdf) {
+      openFileLightbox(src, fileName)
+    } else {
+      const a = document.createElement('a')
+      a.href = src
+      a.download = fileName
+      a.click()
+    }
+    event.preventDefault()
+  }
 }
 
 const setLightboxZoom = (value: number) => {
@@ -1493,7 +1573,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                           v-model="filters.company_id"
                           class="mt-1 block w-full border border-border bg-background text-foreground rounded-md shadow-sm py-2 px-3"
                         >
-                          <option value="">Seleccione compañía</option>
+                          <option value="">Seleccione</option>
                           <option v-for="c in companies" :key="c.id" :value="c.id">
                             {{ c.company_name }}
                           </option>
@@ -1508,7 +1588,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                           :disabled="!channels.length"
                         >
                           <option value="">
-                            {{ channels.length ? 'Seleccione canal' : 'Seleccione' }}
+                            {{ channels.length ? 'Seleccione' : 'Seleccione' }}
                           </option>
                           <option v-for="ch in channels" :key="ch.id" :value="ch.id">
                             {{ ch.channel_name }}
@@ -1720,7 +1800,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                 <input
                   ref="imageInputRef"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf,.pdf"
                   class="hidden"
                   @change="onImageSelected"
                 />
@@ -1835,7 +1915,12 @@ const onLightboxWheel = (event: WheelEvent) => {
                             : 'bg-muted text-foreground'"
                         >
                         
-                        <div class="leading-relaxed break-words cursor-zoom-in" v-html="m.text" @click="onMessageBodyClick"></div>
+                        <div 
+                          class="leading-relaxed break-words cursor-zoom-in" 
+                          v-html="m.text" 
+                          @click="onMessageBodyClick"
+                          :style="m.item_type === 'file' ? { color: isDarkMode ? '#cd8383' : '#d31f1f' } : {}"
+                        ></div>
 
                         <div class="mt-1 text-[11px] opacity-70" :class="m.sender === 'me' ? 'text-right' : ''">
                          {{ m.created_at }}
@@ -2084,22 +2169,26 @@ const onLightboxWheel = (event: WheelEvent) => {
     <Dialog v-model:open="imagePreviewOpen">
       <DialogContent class="sm:max-w-[680px]">
         <DialogHeader>
-          <DialogTitle>Previsualizar imagen</DialogTitle>
+          <DialogTitle>Previsualizar adjunto</DialogTitle>
           <DialogDescription>
-            Verifica la imagen y el payload antes de enviar al API.
+            Verifica el archivo y el payload antes de enviar al API.
           </DialogDescription>
         </DialogHeader>
 
         <div class="grid gap-4 md:grid-cols-2">
           <div class="space-y-2">
-            <p class="text-sm font-medium">Imagen</p>
+            <p class="text-sm font-medium">Archivo</p>
             <div class="rounded-md border p-2 bg-muted/20">
               <img
-                v-if="imagePreviewUrl"
+                v-if="imagePreviewUrl && imageFile?.type?.startsWith('image/')"
                 :src="imagePreviewUrl"
                 alt="Preview"
                 class="max-h-72 w-full rounded-md object-contain"
               />
+              <div v-else class="min-h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <FileText class="h-10 w-10" />
+                <span class="text-sm font-medium">{{ imageFileName || 'PDF adjunto' }}</span>
+              </div>
             </div>
             <p class="text-xs text-muted-foreground">
               Nombre final: {{ imageFileName }}
@@ -2129,25 +2218,64 @@ const onLightboxWheel = (event: WheelEvent) => {
       <DialogContent class="sm:max-w-[90vw] p-0 overflow-hidden">
         <div class="relative bg-black/95 text-white">
           <div class="absolute right-3 top-3 z-10 flex items-center gap-2">
-            <Button type="button" variant="secondary" size="icon" @click="zoomOutLightbox">
-              <ZoomOut class="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="secondary" size="icon" @click="zoomInLightbox">
-              <ZoomIn class="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="secondary" @click="resetLightboxZoom">
-              100%
-            </Button>
+            <template v-if="lightboxType === 'image'">
+              <Button type="button" variant="secondary" size="icon" @click="zoomOutLightbox">
+                <ZoomOut class="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="secondary" size="icon" @click="zoomInLightbox">
+                <ZoomIn class="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="secondary" @click="resetLightboxZoom">
+                100%
+              </Button>
+            </template>
+            <template v-if="lightboxType === 'file'">
+              <Button type="button" variant="secondary" size="icon" @click="zoomOutLightbox">
+                <ZoomOut class="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="secondary" size="icon" @click="zoomInLightbox">
+                <ZoomIn class="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="secondary" @click="resetLightboxZoom">
+                100%
+              </Button>
+              <a :href="lightboxSrc" target="_blank" rel="noopener">
+                <Button type="button" variant="secondary" size="icon">
+                  <Download class="h-4 w-4" />
+                </Button>
+              </a>
+            </template>
           </div>
 
           <div class="h-[80vh] w-full overflow-auto flex items-center justify-center" @wheel.prevent="onLightboxWheel">
-            <img
-              v-if="lightboxSrc"
-              :src="lightboxSrc"
-              alt="Imagen ampliada"
-              class="max-h-[78vh] max-w-full object-contain transition-transform duration-150"
-              :style="{ transform: `scale(${lightboxZoom})` }"
-            />
+            <template v-if="lightboxType === 'image'">
+              <img
+                v-if="lightboxSrc"
+                :src="lightboxSrc"
+                alt="Imagen ampliada"
+                class="max-h-[78vh] max-w-full object-contain transition-transform duration-150"
+                :style="{ transform: `scale(${lightboxZoom})` }"
+              />
+            </template>
+            <template v-if="lightboxType === 'file'">
+              <iframe
+                v-if="/\.pdf$/i.test(lightboxSrc)"
+                :src="lightboxSrc"
+                class="w-full h-full"
+              />
+              <div v-else class="flex flex-col items-center gap-6 justify-center">
+                <div class="inline-flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-muted hover:bg-muted/80 transition-colors">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <span class="text-sm font-semibold">{{ lightboxFileName }}</span>
+                </div>
+                <a :href="lightboxSrc" target="_blank" rel="noopener">
+                  <Button type="button" variant="secondary" class="gap-2">
+                    <Download class="h-4 w-4" />
+                    Descargar
+                  </Button>
+                </a>
+              </div>
+            </template>
           </div>
         </div>
       </DialogContent>
@@ -2278,8 +2406,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                   <!-- Body -->
                   <div
                     class="mt-2 leading-relaxed break-words"
-                    @click="onMessageBodyClick"
-                    v-html="getMessageHtml(m)"
+                    v-html="getMessageHtml(m, true)"
                   ></div>
                 </div>
               </div>

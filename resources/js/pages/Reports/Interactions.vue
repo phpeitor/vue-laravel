@@ -85,7 +85,7 @@ const maxDate = today(tz);
 
 const buildDefaultDates = () => {
   const end = new Date();
-  const start = subDays(end, 15);
+  const start = subDays(end, 7);
   return {
     startStr: format(start, 'yyyy-MM-dd'),
     endStr: format(end, 'yyyy-MM-dd'),
