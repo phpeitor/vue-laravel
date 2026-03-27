@@ -24,7 +24,7 @@ class ChatReplyController extends Controller
 
         if ($isMedia) {
             $rules['file'] = $isAudio
-                ? ['required', 'file', 'mimes:mp3', 'max:4096']
+                ? ['required', 'file', 'mimes:mp3,webm,ogg,wav,m4a,mpga', 'max:4096']
                 : ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:2048'];
             $rules['fileName'] = ['nullable', 'string', 'max:180'];
         } else {
@@ -74,7 +74,7 @@ class ChatReplyController extends Controller
             $fileUrl = url(Storage::url($path));
 
             $data['message'] = $fileUrl;
-            $data['messageType'] = $isAudio ? 'audio' : 'file';
+            $data['messageType'] = $isAudio ? 'audio' : ($isImageFile ? 'image' : 'file');
         } else {
             $data['message'] = (string) $validated['message'];
         }

@@ -72,7 +72,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EmojiPicker from 'vue3-emoji-picker'
-import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut, FileText, Download } from 'lucide-vue-next'
+import { Search, Send, Paperclip, MoreVertical, Filter, CalendarIcon, X, Clock, MessageSquareX, RefreshCw, Loader2, Bold, Italic, Underline, UserRoundCog, User, Bot, ZoomIn, ZoomOut, FileText, Download, Mic, Square } from 'lucide-vue-next'
 import type { DateRange } from 'reka-ui'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import { subDays, format } from 'date-fns'
@@ -311,6 +311,13 @@ const getMessagePlainText = (m: MessageRow): string => {
   return m.item_content ?? ''
 }
 
+const isAudioFileName = (name: string): boolean => /\.(mp3|wav|ogg|webm|m4a|mpga)$/i.test(name || '')
+
+const isAudioFile = (file: File | null): boolean => {
+  if (!file) return false
+  return file.type.startsWith('audio/') || isAudioFileName(file.name || '')
+}
+
 /** Devuelve HTML final listo para v-html según el tipo de mensaje */
 const getMessageHtml = (m: MessageRow, isHistory: boolean = false): string => {
   if ((m.item_type ?? '').toLowerCase() === 'text_uploading') {
@@ -360,7 +367,7 @@ const getMessageHtml = (m: MessageRow, isHistory: boolean = false): string => {
     const safeUrl = rawUrl.replace(/"/g, '&quot;')
     if (!safeUrl) return ''
 
-    return `<audio controls preload="none" class="w-full max-w-[340px]"><source src="${safeUrl}" type="audio/mpeg" />Tu navegador no soporta audio HTML5.</audio>`
+    return `<audio controls preload="none" src="${safeUrl}" class="w-full max-w-[340px]">Tu navegador no soporta audio HTML5.</audio>`
   }
 
   if ((m.item_type ?? '').toLowerCase() === 'image') {
@@ -1209,6 +1216,13 @@ const imagePreviewUrl = ref('')
 const imageFile = ref<File | null>(null)
 const imageFileName = ref('')
 const sendingImage = ref(false)
+const isRecordingVoice = ref(false)
+const voiceSeconds = ref(0)
+const voiceDiscardOnStop = ref(false)
+const voiceRecorder = ref<MediaRecorder | null>(null)
+const voiceStream = ref<MediaStream | null>(null)
+const voiceChunks = ref<BlobPart[]>([])
+const voiceTimerId = ref<number | null>(null)
 
 const toggleEmojiPickerChat = () => {
   if (draftDisabled.value) return
@@ -1227,6 +1241,122 @@ const addEmojiToDraft = (emoji: any) => {
   if (!emojiChar) return
   draftEditorRef.value?.insertText?.(emojiChar)
   showEmojiPickerChat.value = false
+}
+
+const stopVoiceStream = () => {
+  if (voiceStream.value) {
+    voiceStream.value.getTracks().forEach(track => track.stop())
+    voiceStream.value = null
+  }
+}
+
+const clearVoiceTimer = () => {
+  if (voiceTimerId.value) {
+    window.clearInterval(voiceTimerId.value)
+    voiceTimerId.value = null
+  }
+}
+
+const stopVoiceRecording = () => {
+  if (!voiceRecorder.value) return
+  if (voiceRecorder.value.state !== 'inactive') {
+    voiceRecorder.value.stop()
+  }
+}
+
+const cancelVoiceRecording = () => {
+  if (!isRecordingVoice.value) return
+  voiceDiscardOnStop.value = true
+  stopVoiceRecording()
+}
+
+const formatVoiceTime = computed(() => {
+  const mm = Math.floor(voiceSeconds.value / 60).toString().padStart(2, '0')
+  const ss = (voiceSeconds.value % 60).toString().padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
+const startVoiceRecording = async () => {
+  if (draftDisabled.value || isRecordingVoice.value) return
+
+  if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    sonnerToast.error('Grabación no soportada', {
+      description: 'Tu navegador no soporta grabación de audio.',
+    })
+    return
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    voiceStream.value = stream
+
+    const mimeCandidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+      'audio/mp4',
+    ]
+    const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m))
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+
+    voiceRecorder.value = recorder
+    voiceChunks.value = []
+    voiceDiscardOnStop.value = false
+    voiceSeconds.value = 0
+    isRecordingVoice.value = true
+
+    recorder.ondataavailable = (event: BlobEvent) => {
+      if (event.data && event.data.size > 0) {
+        voiceChunks.value.push(event.data)
+      }
+    }
+
+    recorder.onstop = () => {
+      clearVoiceTimer()
+      stopVoiceStream()
+      isRecordingVoice.value = false
+
+      if (voiceDiscardOnStop.value) {
+        voiceChunks.value = []
+        return
+      }
+
+      const blobType = recorder.mimeType || 'audio/webm'
+      const blob = new Blob(voiceChunks.value, { type: blobType })
+      voiceChunks.value = []
+
+      if (!blob.size) return
+
+      let ext = 'webm'
+      if (/ogg/i.test(blobType)) ext = 'ogg'
+      if (/mp4|m4a/i.test(blobType)) ext = 'm4a'
+
+      const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: blobType })
+
+      clearImageDraft()
+      imageFile.value = file
+      imageFileName.value = file.name
+      imagePreviewUrl.value = URL.createObjectURL(file)
+      imagePreviewOpen.value = true
+    }
+
+    recorder.start()
+
+    voiceTimerId.value = window.setInterval(() => {
+      voiceSeconds.value += 1
+      if (voiceSeconds.value >= 60) {
+        stopVoiceRecording()
+      }
+    }, 1000)
+  } catch (error: any) {
+    stopVoiceStream()
+    isRecordingVoice.value = false
+    clearVoiceTimer()
+    sonnerToast.error('No se pudo iniciar la grabación', {
+      description: error?.message ?? 'Revisa permisos de micrófono.',
+    })
+  }
 }
 
 const buildImageFileName = (file: File): string => {
@@ -1264,7 +1394,7 @@ const onImageSelected = (event: Event) => {
   const lowerName = (file.name || '').toLowerCase()
   const isImage = file.type.startsWith('image/')
   const isPdf = file.type === 'application/pdf' || lowerName.endsWith('.pdf')
-  const isAudio = file.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
+  const isAudio = isAudioFile(file)
 
   if (!isImage && !isPdf && !isAudio) {
     sonnerToast.error('Archivo no permitido', {
@@ -1278,7 +1408,7 @@ const onImageSelected = (event: Event) => {
   if (file.size > maxBytes) {
     sonnerToast.error('Archivo demasiado pesado', {
       description: isAudio
-        ? 'El tamano maximo para MP3 es 4MB.'
+        ? 'El tamano maximo para audio es 4MB.'
         : 'El tamano maximo para imagenes y PDF es 2MB.',
     })
     clearImageDraft()
@@ -1295,11 +1425,10 @@ const onImageSelected = (event: Event) => {
 const imagePayloadPreview = computed(() => {
   const userId = (page.props.auth as any)?.user?.id ?? null
   const isImage = !!imageFile.value?.type?.startsWith('image/')
-  const lowerName = (imageFile.value?.name || '').toLowerCase()
-  const isAudio = imageFile.value?.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
+  const isAudio = isAudioFile(imageFile.value)
   const fallback = isAudio ? 'audio.mp3' : (isImage ? 'image.jpg' : 'archivo.pdf')
   const folder = isAudio ? 'messages_audio' : (isImage ? 'messages_image' : 'messages_file')
-  const messageType = isAudio ? 'audio' : 'file'
+  const messageType = isAudio ? 'audio' : (isImage ? 'image' : 'file')
   const message = `${window.location.origin}/storage/${folder}/${imageFileName.value || fallback}`
 
   return JSON.stringify(
@@ -1322,12 +1451,13 @@ const sendAttachedImage = async () => {
   const threadId = activeThreadId.value
   const optimisticId = `tmp-img-${Date.now()}`
   const socketId = (window as any).Echo?.socketId?.()
-  const lowerName = (imageFile.value.name || '').toLowerCase()
-  const isAudio = imageFile.value.type === 'audio/mpeg' || lowerName.endsWith('.mp3')
+  const isAudio = isAudioFile(imageFile.value)
   const optimisticType = isAudio
     ? 'audio_uploading'
     : (imageFile.value.type.startsWith('image/') ? 'image_uploading' : 'file_uploading')
-  const outboundType = isAudio ? 'audio' : 'file'
+  const outboundType = isAudio
+    ? 'audio'
+    : (imageFile.value.type.startsWith('image/') ? 'image' : 'file')
 
   messagesList.value.push({
     message_id: -1,
@@ -1388,6 +1518,15 @@ watch(imagePreviewOpen, (open) => {
   if (!open) {
     clearImageDraft()
   }
+})
+
+onBeforeUnmount(() => {
+  clearVoiceTimer()
+  if (isRecordingVoice.value) {
+    voiceDiscardOnStop.value = true
+    stopVoiceRecording()
+  }
+  stopVoiceStream()
 })
 
 const sendMessageWithText = async (msg: string) => {
@@ -1998,6 +2137,10 @@ const onLightboxWheel = (event: WheelEvent) => {
 
                 <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                   <TooltipProvider :delayDuration="200">
+                    <div v-if="isRecordingVoice" class="px-2 py-1 rounded-md bg-red-50 text-red-600 text-xs font-medium">
+                      {{ formatVoiceTime }} / 01:00
+                    </div>
+
                     <Tooltip>
                       <TooltipTrigger as-child>
                         <Button
@@ -2044,6 +2187,40 @@ const onLightboxWheel = (event: WheelEvent) => {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="top" :sideOffset="6">Subrayado</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          :disabled="draftDisabled"
+                          @click="isRecordingVoice ? stopVoiceRecording() : startVoiceRecording()"
+                        >
+                          <Square v-if="isRecordingVoice" class="h-4 w-4 text-red-600" />
+                          <Mic v-else class="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">
+                        {{ isRecordingVoice ? 'Detener grabación' : 'Grabar nota de voz' }}
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip v-if="isRecordingVoice">
+                      <TooltipTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8 p-0"
+                          @click="cancelVoiceRecording"
+                        >
+                          <X class="h-4 w-4 text-red-600" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" :sideOffset="6">Cancelar grabación</TooltipContent>
                     </Tooltip>
 
                     <Tooltip>
@@ -2214,7 +2391,7 @@ const onLightboxWheel = (event: WheelEvent) => {
                 class="max-h-72 w-full rounded-md object-contain"
               />
               <audio
-                v-else-if="imagePreviewUrl && (imageFile?.type === 'audio/mpeg' || imageFileName.toLowerCase().endsWith('.mp3'))"
+                v-else-if="imagePreviewUrl && imageFile?.type?.startsWith('audio/')"
                 :src="imagePreviewUrl"
                 controls
                 preload="none"
