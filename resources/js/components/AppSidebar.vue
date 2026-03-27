@@ -11,8 +11,8 @@ import useAuth from '@/composables/useAuth';
 
 const { hasPermission, user, permissions } = useAuth();
 
-console.log('🔐 Usuario autenticado:', user.value);
-console.log('🔐 Permisos disponibles:', permissions.value);
+/*console.log('🔐 Usuario autenticado:', user.value);
+console.log('🔐 Permisos disponibles:', permissions.value);*/
 
 const allNavItems: NavItem[] = [
   { title: 'Inicio', href: '/dashboard', icon: LayoutGrid },

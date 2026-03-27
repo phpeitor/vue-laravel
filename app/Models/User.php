@@ -25,7 +25,6 @@ class User extends Authenticatable
         'email',
         'password',
         'estado',
-        'omnichannel_user_id',
     ];
 
     /**
