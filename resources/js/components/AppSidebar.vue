@@ -26,6 +26,7 @@ const allNavItems: NavItem[] = [
     items: [
       { title: 'Interacciones', href: '/reports/interactions' },
       { title: 'Threads', href: '/reports/threads' },
+      { title: 'Tipificaciones', href: '/reports/tipificaciones' },
     ],
   },
 ];
