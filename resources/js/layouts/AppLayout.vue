@@ -27,7 +27,7 @@ import {
 import { usePage } from '@inertiajs/vue3';
 import type { BreadcrumbItemType } from '@/types';
 import { Bug } from 'lucide-vue-next';
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { Toaster as Sonner, toast as sonnerToast } from 'vue-sonner';
 
 interface Props {
@@ -91,22 +91,34 @@ async function submitIssue() {
     }
 }
 
+const ONLINE_USERS_CHANNEL = 'online-users';
+const ONLINE_USERS_EVENT = '.UserLoggedIn';
+
+const onUserLoggedIn = (e: any) => {
+    const currentUserId = Number((page.props as any)?.auth?.user?.id ?? 0);
+    const eventUserId = Number(e?.user?.id ?? 0);
+
+    if (currentUserId > 0 && currentUserId === eventUserId) {
+        return;
+    }
+
+    sonnerToast.success('Usuario en línea', {
+        description: e?.user?.name ?? 'Usuario',
+    });
+};
+
 onMounted(() => {
-    window.Echo.channel('online-users')
-        .listen('.UserLoggedIn', (e: any) => {
-            const currentUserId = Number((page.props as any)?.auth?.user?.id ?? 0);
-            const eventUserId = Number(e?.user?.id ?? 0);
+    if (!window.Echo) return;
 
-            if (currentUserId > 0 && currentUserId === eventUserId) {
-                return;
-            }
+    const channel = window.Echo.channel(ONLINE_USERS_CHANNEL);
+    // Evita listeners duplicados cuando el layout se monta varias veces en navegación SPA.
+    channel.stopListening(ONLINE_USERS_EVENT);
+    channel.listen(ONLINE_USERS_EVENT, onUserLoggedIn);
+});
 
-            sonnerToast.success('Usuario en línea', {
-                description: e?.user?.name ?? 'Usuario',
-            });
-        });
-
-
+onBeforeUnmount(() => {
+    if (!window.Echo) return;
+    window.Echo.channel(ONLINE_USERS_CHANNEL).stopListening(ONLINE_USERS_EVENT);
 });
 </script>
 

@@ -1,6 +1,6 @@
 <script setup>
 
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import ApplicationLogo from "@/components/ApplicationLogo.vue";
 import Dropdown from "@/components/Dropdown.vue";
 import DropdownLink from "@/components/DropdownLink.vue";
@@ -13,23 +13,35 @@ const { hasPermission } = useAuth();
 const page = usePage();
 const showingNavigationDropdown = ref(false);
 
-import { onMounted } from 'vue';
 import { Toaster as Sonner, toast as sonnerToast } from 'vue-sonner';
 
+const ONLINE_USERS_CHANNEL = 'online-users';
+const ONLINE_USERS_EVENT = '.UserLoggedIn';
+
+const onUserLoggedIn = (e) => {
+    const currentUserId = Number(page.props?.auth?.user?.id ?? 0);
+    const eventUserId = Number(e?.user?.id ?? 0);
+
+    if (currentUserId > 0 && currentUserId === eventUserId) {
+        return;
+    }
+
+    sonnerToast.success('Usuario en línea', {
+        description: e?.user?.name ?? 'Usuario',
+    });
+};
+
 onMounted(() => {
-    window.Echo.channel('online-users')
-        .listen('.UserLoggedIn', (e) => {
-            const currentUserId = Number(page.props?.auth?.user?.id ?? 0);
-            const eventUserId = Number(e?.user?.id ?? 0);
+    if (!window.Echo) return;
 
-            if (currentUserId > 0 && currentUserId === eventUserId) {
-                return;
-            }
+    const channel = window.Echo.channel(ONLINE_USERS_CHANNEL);
+    channel.stopListening(ONLINE_USERS_EVENT);
+    channel.listen(ONLINE_USERS_EVENT, onUserLoggedIn);
+});
 
-            sonnerToast.success('Usuario en línea', {
-                description: e?.user?.name ?? 'Usuario',
-            });
-        });
+onBeforeUnmount(() => {
+    if (!window.Echo) return;
+    window.Echo.channel(ONLINE_USERS_CHANNEL).stopListening(ONLINE_USERS_EVENT);
 });
 </script>
 

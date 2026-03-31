@@ -23,6 +23,11 @@ class ReportController extends Controller
         return Inertia::render('Reports/Threads');
     }
 
+    public function tipificaciones()
+    {
+        return Inertia::render('Reports/Tipificaciones');
+    }
+
     private function interactionsBaseQuery(array $validated)
     {
         $startDate = Carbon::parse($validated['start_date'])->startOfDay();
@@ -325,6 +330,139 @@ class ReportController extends Controller
         $writer->close();
 
         Log::info('REPORT_THREADS_EXPORTED', [
+            'user_id' => (int) optional($request->user())->id,
+            'user_email' => optional($request->user())->email,
+            'downloaded_at' => now()->toDateTimeString(),
+            'rows_exported' => $writtenRows,
+            'rows_counted' => $totalRows,
+            'company_id' => (int) $validated['company_id'],
+            'communication_channel_id' => (int) $validated['communication_channel_id'],
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'file_name' => $fileName,
+        ]);
+
+        return response()->download($filePath, $fileName)->deleteFileAfterSend(true);
+    }
+
+    private function tipificacionesBaseQuery(array $validated)
+    {
+        return DB::table('threads as t')
+            ->leftJoin('thread_tipificaciones as ht', 't.id', '=', 'ht.thread_id')
+            ->leftJoin('chat_tipificaciones as ct', 'ct.id', '=', 'ht.tipificacion_id')
+            ->leftJoin('companies as a', 'a.id', '=', 't.company_id')
+            ->leftJoin('communication_channels as b', 'b.id', '=', 't.communication_channel_id')
+            ->selectRaw("\n                t.id,\n                a.company_name || ' - ' || b.channel_name AS canal,\n                t.sender_id AS telefono,\n                (t.first_conversation_date - INTERVAL '5 hours') AS primer_mensaje,\n                (t.last_conversation_date - INTERVAL '5 hours') AS ultimo_mensaje,\n                t.thread_status AS estado,\n                ct.tipificacion_1,\n                ct.tipificacion_2,\n                ct.tipificacion_3\n            ")
+            ->where('t.company_id', (int) $validated['company_id'])
+            ->where('t.communication_channel_id', (int) $validated['communication_channel_id'])
+            ->whereRaw("CAST((t.create_date - INTERVAL '5 hours') AS DATE) BETWEEN ? AND ?", [
+                $validated['start_date'],
+                $validated['end_date'],
+            ]);
+    }
+
+    public function getTipificacionesData(Request $request)
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date',
+            'company_id' => 'required|integer',
+            'communication_channel_id' => 'required|integer',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:10|max:500',
+        ]);
+
+        $page = max(1, (int) ($validated['page'] ?? 1));
+        $perPage = (int) ($validated['per_page'] ?? 100);
+
+        $baseQuery = $this->tipificacionesBaseQuery($validated);
+
+        $total = (clone $baseQuery)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        $rows = (clone $baseQuery)
+            ->orderByDesc('t.id')
+            ->offset($offset)
+            ->limit($perPage)
+            ->get();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'last_page' => $lastPage,
+            ],
+        ]);
+    }
+
+    public function exportTipificaciones(Request $request)
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date',
+            'company_id' => 'required|integer',
+            'communication_channel_id' => 'required|integer',
+        ]);
+
+        $query = $this->tipificacionesBaseQuery($validated)
+            ->orderByDesc('t.id');
+
+        $totalRows = (clone $query)->count();
+
+        $headers = [
+            'Thread',
+            'Canal',
+            'Telefono',
+            'Primer Mensaje',
+            'Ultimo Mensaje',
+            'Estado',
+            'Tipificacion 1',
+            'Tipificacion 2',
+            'Tipificacion 3',
+        ];
+
+        $fileName = 'tipificaciones_' . now()->format('Y-m-d_H-i-s') . '.xlsx';
+        $tmpDir = storage_path('app/tmp/spout');
+
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+
+        $baseTmpPath = tempnam($tmpDir, 'tipificaciones_');
+        $filePath = ($baseTmpPath ?: ($tmpDir . DIRECTORY_SEPARATOR . uniqid('tipificaciones_', true))) . '.xlsx';
+
+        if ($baseTmpPath && file_exists($baseTmpPath)) {
+            @unlink($baseTmpPath);
+        }
+
+        $writer = new XlsxWriter(new XlsxOptions(tempFolder: $tmpDir));
+        $writer->openToFile($filePath);
+        $writer->addRow(Row::fromValues($headers));
+
+        $writtenRows = 0;
+
+        foreach ($query->lazy(1000) as $row) {
+            $writer->addRow(Row::fromValues([
+                $row->id,
+                $row->canal,
+                $row->telefono,
+                $row->primer_mensaje,
+                $row->ultimo_mensaje,
+                $row->estado,
+                $row->tipificacion_1,
+                $row->tipificacion_2,
+                $row->tipificacion_3,
+            ]));
+
+            $writtenRows++;
+        }
+
+        $writer->close();
+
+        Log::info('REPORT_TIPIFICACIONES_EXPORTED', [
             'user_id' => (int) optional($request->user())->id,
             'user_email' => optional($request->user())->email,
             'downloaded_at' => now()->toDateTimeString(),

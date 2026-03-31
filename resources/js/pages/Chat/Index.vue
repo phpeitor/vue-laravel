@@ -311,7 +311,7 @@ const getMessagePlainText = (m: MessageRow): string => {
   return m.item_content ?? ''
 }
 
-const isAudioFileName = (name: string): boolean => /\.(mp3|wav|ogg|webm|m4a|mpga)$/i.test(name || '')
+const isAudioFileName = (name: string): boolean => /\.(mp3|oga|ogg|wav|webm|m4a|mpga)$/i.test(name || '')
 
 const isAudioFile = (file: File | null): boolean => {
   if (!file) return false
@@ -1291,10 +1291,10 @@ const startVoiceRecording = async () => {
     voiceStream.value = stream
 
     const mimeCandidates = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
       'audio/ogg;codecs=opus',
       'audio/ogg',
+      'audio/webm;codecs=opus',
+      'audio/webm',
       'audio/mp4',
     ]
     const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m))
@@ -1329,7 +1329,7 @@ const startVoiceRecording = async () => {
       if (!blob.size) return
 
       let ext = 'webm'
-      if (/ogg/i.test(blobType)) ext = 'ogg'
+      if (/ogg/i.test(blobType)) ext = 'oga'
       if (/mp4|m4a/i.test(blobType)) ext = 'm4a'
 
       const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: blobType })

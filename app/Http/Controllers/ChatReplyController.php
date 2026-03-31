@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Message;
 use App\Models\Thread;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Process\Process;
 
 class ChatReplyController extends Controller
 {
@@ -66,11 +68,39 @@ class ChatReplyController extends Controller
                 $extension = 'jpg';
             }
 
-            $fileName = $baseName . '.' . $extension;
-
             $isImageFile = str_starts_with((string) $file->getMimeType(), 'image/');
             $storageFolder = $isAudio ? 'messages_audio' : ($isImageFile ? 'messages_image' : 'messages_file');
-            $path = $file->storeAs($storageFolder, $fileName, 'public');
+
+            if ($isAudio) {
+                $audioExt = $extension !== '' ? $extension : strtolower((string) $file->getClientOriginalExtension());
+                $audioExt = $audioExt !== '' ? $audioExt : 'mp3';
+
+                if (!in_array($audioExt, ['mp3', 'oga'], true)) {
+                    try {
+                        $converted = $this->convertAudioToOga($file, $baseName, $storageFolder);
+                        $path = $converted['path'];
+                    } catch (\RuntimeException $e) {
+                        Log::error('No se pudo convertir audio a OGA', [
+                            'thread_id' => $threadId,
+                            'extension' => $audioExt,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'No se pudo convertir la nota de voz a formato OGA/MP3.',
+                            'details' => $e->getMessage(),
+                        ], 422);
+                    }
+                } else {
+                    $fileName = $baseName . '.' . $audioExt;
+                    $path = $file->storeAs($storageFolder, $fileName, 'public');
+                }
+            } else {
+                $fileName = $baseName . '.' . $extension;
+                $path = $file->storeAs($storageFolder, $fileName, 'public');
+            }
+
             $fileUrl = url(Storage::url($path));
 
             $data['message'] = $fileUrl;
@@ -174,5 +204,57 @@ class ChatReplyController extends Controller
         ]);
 
         return response()->json($payload);
+    }
+
+    /**
+     * Convierte un audio grabado (webm/ogg/wav/m4a) a OGA (Opus) para reducir peso y compatibilidad.
+     */
+    private function convertAudioToOga(UploadedFile $file, string $baseName, string $storageFolder): array
+    {
+        $inputPath = $file->getRealPath();
+        if (!$inputPath || !is_file($inputPath)) {
+            throw new \RuntimeException('Archivo temporal de audio no disponible.');
+        }
+
+        $tmpOut = tempnam(sys_get_temp_dir(), 'voice_');
+        if ($tmpOut === false) {
+            throw new \RuntimeException('No se pudo crear archivo temporal para conversion.');
+        }
+        $tmpOga = $tmpOut . '.oga';
+
+        $process = new Process([
+            'ffmpeg',
+            '-y',
+            '-i',
+            $inputPath,
+            '-vn',
+            '-c:a',
+            'libopus',
+            '-b:a',
+            '24k',
+            '-vbr',
+            'on',
+            $tmpOga,
+        ]);
+
+        $process->setTimeout(30);
+        $process->run();
+
+        if (!$process->isSuccessful() || !is_file($tmpOga)) {
+            @unlink($tmpOut);
+            @unlink($tmpOga);
+
+            $errorOutput = trim($process->getErrorOutput() ?: $process->getOutput());
+            throw new \RuntimeException($errorOutput !== '' ? $errorOutput : 'FFmpeg no disponible o fallo de conversion.');
+        }
+
+        $fileName = $baseName . '.oga';
+        $path = $storageFolder . '/' . $fileName;
+        Storage::disk('public')->put($path, file_get_contents($tmpOga));
+
+        @unlink($tmpOut);
+        @unlink($tmpOga);
+
+        return ['path' => $path];
     }
 }
